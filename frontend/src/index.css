@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-wa-green: #25d366;
+  --color-wa-green-dark: #1da851;
+  --color-wa-teal: #075e54;
+  --color-wa-teal-light: #128c7e;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
