@@ -37,7 +37,7 @@ export default function Checkout() {
 
     const ok = await confirmAction({
       title: 'Place this order?',
-      text: `Total: ${formatPrice(total)} — Cash on Delivery`,
+      text: `Total: ${formatPrice(total)} - Cash on Delivery`,
       confirmText: 'Yes, place order',
       icon: 'question',
     });

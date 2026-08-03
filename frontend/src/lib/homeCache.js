@@ -7,3 +7,7 @@ export function getHomeCache() {
 export function setHomeCache(partial) {
   cache = { ...cache, ...partial };
 }
+
+export function clearHomeCache() {
+  cache = null;
+}

@@ -13,6 +13,35 @@ function canManage(user) {
   return user && ['Admin', 'SuperAdmin'].includes(user.role);
 }
 
+async function checkCategoryName(req, res) {
+  try {
+    const { name, excludeId } = req.query;
+    if (!name || !name.trim()) return res.json({ available: true });
+    const params = [name.trim()];
+    let sql = 'SELECT id FROM categories WHERE LOWER(name) = LOWER(?)';
+    if (excludeId) {
+      sql += ' AND id != ?';
+      params.push(excludeId);
+    }
+    const [rows] = await pool.query(sql, params);
+    res.json({ available: rows.length === 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to check category name' });
+  }
+}
+
+async function nameInUse(name, excludeId) {
+  const params = [name.trim()];
+  let sql = 'SELECT id FROM categories WHERE LOWER(name) = LOWER(?)';
+  if (excludeId) {
+    sql += ' AND id != ?';
+    params.push(excludeId);
+  }
+  const [rows] = await pool.query(sql, params);
+  return rows.length > 0;
+}
+
 async function listCategories(req, res) {
   try {
     const { active } = req.query;
@@ -32,6 +61,9 @@ async function createCategory(req, res) {
   try {
     const { name, image } = req.body;
     if (!name) return res.status(400).json({ message: 'Name is required' });
+    if (await nameInUse(name)) {
+      return res.status(409).json({ message: 'A category with this name already exists' });
+    }
     const slug = slugify(name);
     const [result] = await pool.query(
       'INSERT INTO categories (name, slug, image) VALUES (?, ?, ?)',
@@ -40,6 +72,9 @@ async function createCategory(req, res) {
     res.status(201).json({ id: result.insertId, name, slug, image: image || null });
   } catch (err) {
     console.error(err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'A category with this name already exists' });
+    }
     res.status(500).json({ message: 'Failed to create category' });
   }
 }
@@ -48,6 +83,9 @@ async function updateCategory(req, res) {
   try {
     const { id } = req.params;
     const { name, image } = req.body;
+    if (name && (await nameInUse(name, id))) {
+      return res.status(409).json({ message: 'A category with this name already exists' });
+    }
     const slug = name ? slugify(name) : undefined;
     const fields = [];
     const values = [];
@@ -60,6 +98,9 @@ async function updateCategory(req, res) {
     res.json({ message: 'Category updated' });
   } catch (err) {
     console.error(err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'A category with this name already exists' });
+    }
     res.status(500).json({ message: 'Failed to update category' });
   }
 }
@@ -86,4 +127,4 @@ async function restoreCategory(req, res) {
   }
 }
 
-module.exports = { listCategories, createCategory, updateCategory, deleteCategory, restoreCategory, slugify };
+module.exports = { listCategories, createCategory, updateCategory, deleteCategory, restoreCategory, slugify, checkCategoryName };

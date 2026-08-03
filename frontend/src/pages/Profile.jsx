@@ -31,11 +31,6 @@ function StatCard({ icon, label, value }) {
   );
 }
 
-function splitName(fullName) {
-  const parts = (fullName || '').trim().split(/\s+/);
-  return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') };
-}
-
 function SectionCard({ icon, title, editing, onEdit, onCancel, onSave, saving, children }) {
   return (
     <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-2xl shadow-sm dark:shadow-none p-5 sm:p-6">
@@ -114,21 +109,26 @@ export default function Profile() {
   const [editingSection, setEditingSection] = useState(null);
   const [totalOrdered, setTotalOrdered] = useState(0);
 
-  const [personalForm, setPersonalForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
-  const [addressForm, setAddressForm] = useState({ address: '' });
+  const [personalForm, setPersonalForm] = useState({ name: '', email: '', phone: '', shop_name: '' });
+  const [addressForm, setAddressForm] = useState({ address: '', city: '' });
   const [passwordForm, setPasswordForm] = useState({ password: '' });
 
   const isSuperAdmin = user?.role === 'SuperAdmin';
   const isCustomer = user?.type === 'customer';
+  const isSeller = user?.role === 'Seller';
 
   useEffect(() => {
     api
       .get('/auth/me')
       .then((res) => {
         setMe(res.data);
-        const { firstName, lastName } = splitName(res.data.name);
-        setPersonalForm({ firstName, lastName, email: res.data.email || '', phone: res.data.phone || '' });
-        setAddressForm({ address: res.data.address || '' });
+        setPersonalForm({
+          name: res.data.name || '',
+          email: res.data.email || '',
+          phone: res.data.phone || '',
+          shop_name: res.data.shop_name || '',
+        });
+        setAddressForm({ address: res.data.address || '', city: res.data.city || '' });
       })
       .finally(() => setLoading(false));
 
@@ -153,9 +153,13 @@ export default function Profile() {
     setEditingSection(null);
     setError('');
     if (me) {
-      const { firstName, lastName } = splitName(me.name);
-      setPersonalForm({ firstName, lastName, email: me.email || '', phone: me.phone || '' });
-      setAddressForm({ address: me.address || '' });
+      setPersonalForm({
+        name: me.name || '',
+        email: me.email || '',
+        phone: me.phone || '',
+        shop_name: me.shop_name || '',
+      });
+      setAddressForm({ address: me.address || '', city: me.city || '' });
       setPasswordForm({ password: '' });
     }
   }
@@ -164,8 +168,8 @@ export default function Profile() {
     setError('');
     setSaving(true);
     try {
-      const name = [personalForm.firstName, personalForm.lastName].filter(Boolean).join(' ');
-      const payload = { name, email: personalForm.email, phone: personalForm.phone };
+      const payload = { name: personalForm.name, email: personalForm.email, phone: personalForm.phone };
+      if (isSeller) payload.shop_name = personalForm.shop_name;
       await updateProfile(payload);
       setMe((m) => ({ ...m, ...payload }));
       setEditingSection(null);
@@ -181,6 +185,7 @@ export default function Profile() {
     setSaving(true);
     try {
       const payload = { address: addressForm.address };
+      if (isSeller) payload.city = addressForm.city;
       await updateProfile(payload);
       setMe((m) => ({ ...m, ...payload }));
       setEditingSection(null);
@@ -264,15 +269,10 @@ export default function Profile() {
         {editingSection === 'personal' ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <TextInput
-              label="First Name"
+              label="Name"
               required
-              value={personalForm.firstName}
-              onChange={(e) => setPersonalForm({ ...personalForm, firstName: e.target.value })}
-            />
-            <TextInput
-              label="Last Name"
-              value={personalForm.lastName}
-              onChange={(e) => setPersonalForm({ ...personalForm, lastName: e.target.value })}
+              value={personalForm.name}
+              onChange={(e) => setPersonalForm({ ...personalForm, name: e.target.value })}
             />
             <div>
               <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">User Role</label>
@@ -291,14 +291,22 @@ export default function Profile() {
               value={personalForm.phone}
               onChange={(e) => setPersonalForm({ ...personalForm, phone: e.target.value })}
             />
+            {isSeller && (
+              <TextInput
+                label="Shop Name"
+                required
+                value={personalForm.shop_name}
+                onChange={(e) => setPersonalForm({ ...personalForm, shop_name: e.target.value })}
+              />
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Field label="First Name" value={splitName(me?.name).firstName} />
-            <Field label="Last Name" value={splitName(me?.name).lastName} />
+            <Field label="Name" value={me?.name} />
             <Field label="User Role" value={user?.role} />
             <Field label="Email Address" value={me?.email} />
             <Field label={isCustomer ? 'WhatsApp Number' : 'Phone Number'} value={me?.phone} />
+            {isSeller && <Field label="Shop Name" value={me?.shop_name} />}
           </div>
         )}
       </SectionCard>
@@ -314,13 +322,26 @@ export default function Profile() {
           saving={saving}
         >
           {editingSection === 'address' ? (
-            <TextInput
-              label="Address"
-              value={addressForm.address}
-              onChange={(e) => setAddressForm({ address: e.target.value })}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <TextInput
+                label="Address"
+                value={addressForm.address}
+                onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })}
+              />
+              {isSeller && (
+                <TextInput
+                  label="City"
+                  required
+                  value={addressForm.city}
+                  onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                />
+              )}
+            </div>
           ) : (
-            <Field label="Address" value={me?.address} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Address" value={me?.address} />
+              {isSeller && <Field label="City" value={me?.city} />}
+            </div>
           )}
         </SectionCard>
       )}

@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen, faTrash, faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
 import Modal from '../../components/Modal';
-import ImageUploadBox from '../../components/ImageUploadBox';
 import ActiveTabs from '../../components/ActiveTabs';
 import AdminFilterBar from '../../components/AdminFilterBar';
 import Pagination from '../../components/Pagination';
+import AdminMobileRow from '../../components/AdminMobileRow';
 import { confirmAction } from '../../lib/alert';
+import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
+import CategoryForm from './forms/CategoryForm';
 
 const PAGE_SIZE = 9;
 
 const emptyForm = { name: '', image: '' };
 
 export default function AdminCategories() {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
@@ -22,6 +26,12 @@ export default function AdminCategories() {
   const [activeTab, setActiveTab] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  const nameStatus = useDuplicateCheck('/categories/check-name', form.name, {
+    paramName: 'name',
+    extraParams: { excludeId: editingId || undefined },
+    skip: !form.name,
+  });
 
   function load() {
     api.get(`/categories?active=${activeTab ? '1' : '0'}`).then((res) => setCategories(res.data));
@@ -46,6 +56,10 @@ export default function AdminCategories() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (nameStatus === 'duplicate') {
+      setError('A category with this name already exists');
+      return;
+    }
     try {
       if (editingId) {
         await api.put(`/categories/${editingId}`, form);
@@ -105,21 +119,14 @@ export default function AdminCategories() {
       <Modal open={modalOpen} onClose={closeModal} title={editingId ? 'Edit Category' : 'Add Category'}>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3">
           {error && <p className="text-red-600 text-sm">{error}</p>}
-          <input
-            required
-            placeholder="Category name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-          />
-
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Image</label>
-            <ImageUploadBox value={form.image} onChange={(url) => setForm({ ...form, image: url })} />
-          </div>
+          <CategoryForm form={form} setForm={setForm} nameStatus={nameStatus} />
 
           <div className="flex gap-2">
-            <button type="submit" className="bg-wa-green hover:bg-wa-green-dark text-white font-semibold px-4 py-2 rounded-md">
+            <button
+              type="submit"
+              disabled={nameStatus === 'duplicate'}
+              className="bg-wa-green hover:bg-wa-green-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-md"
+            >
               {editingId ? 'Update Category' : 'Add Category'}
             </button>
             <button
@@ -137,7 +144,30 @@ export default function AdminCategories() {
 
       <AdminFilterBar search={search} onSearchChange={setSearch} placeholder="Search categories..." />
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {pagedCategories.map((cat) => (
+          <AdminMobileRow
+            key={cat.id}
+            image={cat.image}
+            title={cat.name}
+            subtitle={cat.slug}
+            onView={() => navigate(`/admin/categories/${cat.id}`)}
+            actions={
+              activeTab
+                ? [
+                    { icon: faPen, label: 'Edit', tone: 'edit', onClick: () => navigate(`/admin/categories/${cat.id}/edit`) },
+                    { icon: faTrash, label: 'Delete', tone: 'danger', onClick: () => handleDelete(cat.id) },
+                  ]
+                : [{ icon: faRotateRight, label: 'Restore', tone: 'success', onClick: () => handleRestore(cat.id) }]
+            }
+          />
+        ))}
+        {filteredCategories.length === 0 && (
+          <p className="p-4 text-gray-500 dark:text-gray-400">No categories found.</p>
+        )}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>

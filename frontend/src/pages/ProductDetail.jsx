@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { useCart } from '../context/CartContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -11,11 +12,12 @@ export default function ProductDetail() {
   const [added, setAdded] = useState(false);
   const { addToCart } = useCart();
   const { formatPrice } = useCurrency();
+  const { user } = useAuth();
 
   useEffect(() => {
     setProduct(null);
     api.get(`/products/${slug}`).then((res) => setProduct(res.data));
-  }, [slug]);
+  }, [slug, user]);
 
   if (!product) {
     return <div className="max-w-6xl mx-auto px-4 py-8 text-gray-700 dark:text-gray-300">Loading...</div>;

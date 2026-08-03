@@ -21,10 +21,14 @@ import {
   faLayerGroup,
   faNewspaper,
   faHouse,
+  faFileContract,
+  faArrowRotateLeft,
+  faShieldHalved,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSettings } from '../context/SettingsContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { CURRENCIES } from '../lib/currency';
 
@@ -129,6 +133,7 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const { count } = useCart();
   const { theme, toggleTheme } = useTheme();
+  const { settings } = useSettings();
   const { currency, setCurrency } = useCurrency();
   const [search, setSearch] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -217,8 +222,8 @@ export default function Navbar() {
           </motion.button>
 
           <Link to="/" className="text-xl sm:text-2xl font-extrabold tracking-tight whitespace-nowrap flex items-center gap-2">
-            <span className="hidden lg:inline">City Cycle Stores</span>
-            <span className="lg:hidden">CCS</span>
+            <span className="hidden lg:inline">{settings?.store_name || 'Soon'}</span>
+            <span className="lg:hidden">{settings?.store_short_name || 'Soon'}</span>
           </Link>
 
           <SearchBar
@@ -235,6 +240,7 @@ export default function Navbar() {
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setFilterDropdownOpen((v) => !v)}
                 aria-label="Filters"
+                title="Filters"
                 className="w-9 h-9 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20"
               >
                 <FontAwesomeIcon icon={faFilter} />
@@ -262,6 +268,7 @@ export default function Navbar() {
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => setUserMenuOpen((v) => !v)}
+                  title={user.name}
                   className="flex items-center gap-2 hover:opacity-90"
                 >
                   <span className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center text-sm font-bold">
@@ -292,7 +299,7 @@ export default function Navbar() {
                           danger
                           onClick={() => {
                             logout();
-                            go('/');
+                            window.location.href = '/';
                           }}
                         />
                       </motion.div>
@@ -325,6 +332,7 @@ export default function Navbar() {
               whileTap={{ scale: 0.9 }}
               onClick={() => setFilterOpen(true)}
               aria-label="Filters"
+              title="Filters"
               className="w-9 h-9 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 shrink-0"
             >
               <FontAwesomeIcon icon={faFilter} />
@@ -441,6 +449,7 @@ export default function Navbar() {
                   <>
                     <div className="my-2 border-t border-gray-100 dark:border-neutral-800" />
                     <DrawerItem icon={<FontAwesomeIcon icon={faUser} />} label="My Account" onClick={() => go('/profile')} />
+                    <DrawerItem icon={<FontAwesomeIcon icon={faBox} />} label="My Orders" onClick={() => go('/my-orders')} />
                     <DrawerItem icon={<FontAwesomeIcon icon={faHeart} />} label="Wishlist" onClick={() => go('/wishlist')} />
                     {isAdmin && (
                       <DrawerItem icon={<FontAwesomeIcon icon={faToolbox} />} label="Admin Panel" onClick={() => go('/admin')} />
@@ -452,11 +461,19 @@ export default function Navbar() {
                       danger
                       onClick={() => {
                         logout();
-                        go('/');
+                        window.location.href = '/';
                       }}
                     />
                   </>
                 )}
+
+                <div className="my-2 border-t border-gray-100 dark:border-neutral-800" />
+                <p className="px-4 pt-1 pb-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                  Legal
+                </p>
+                <DrawerItem icon={<FontAwesomeIcon icon={faFileContract} />} label="Terms & Conditions" onClick={() => go('/terms')} />
+                <DrawerItem icon={<FontAwesomeIcon icon={faArrowRotateLeft} />} label="Return Policy" onClick={() => go('/return-policy')} />
+                <DrawerItem icon={<FontAwesomeIcon icon={faShieldHalved} />} label="Privacy Policy" onClick={() => go('/privacy-policy')} />
               </div>
             </motion.div>
           </>

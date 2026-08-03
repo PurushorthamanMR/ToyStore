@@ -9,23 +9,25 @@ import {
   faArrowRight,
   faChevronLeft,
   faChevronRight,
+  faSitemap,
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
 import ProductRow from '../components/ProductRow';
 import ProductCard from '../components/ProductCard';
 import { getHomeCache, setHomeCache } from '../lib/homeCache';
+import { useAuth } from '../context/AuthContext';
 
 const PRODUCTS_PAGE_SIZE = 10;
 
-function ProductGrid({ products, columns = 'lg:grid-cols-4' }) {
+function ProductGrid({ products, columns = 'md:grid-cols-2 lg:grid-cols-4' }) {
   return (
     <div>
-      <div className="lg:hidden max-w-2xl divide-y divide-gray-100 dark:divide-neutral-800">
+      <div className="md:hidden max-w-2xl divide-y divide-gray-100 dark:divide-neutral-800">
         {products.map((p) => (
           <ProductRow key={p.id} product={p} />
         ))}
       </div>
-      <div className={`hidden lg:grid ${columns} gap-4`}>
+      <div className={`hidden md:grid ${columns} gap-4`}>
         {products.map((p) => (
           <ProductCard key={p.id} product={p} />
         ))}
@@ -181,7 +183,39 @@ function BannerCarousel({ banners }) {
   );
 }
 
+// Deliberately different from the square "Hot Categories" tiles and the
+// pill-shaped "Featured Categories" avatars - bigger gradient-overlay cards
+// so this section reads as its own thing while scanning the page.
+function SubcategorySpotlight({ subcategories }) {
+  if (subcategories.length === 0) return null;
+  return (
+    <div className="mb-8">
+      <SectionHeading icon={faSitemap} title="Explore Subcategories" />
+      <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {subcategories.map((sub) => (
+          <Link
+            key={sub.id}
+            to={`/products?subcategory=${sub.slug}`}
+            className="group relative shrink-0 snap-start w-40 sm:w-48 h-52 sm:h-60 rounded-3xl overflow-hidden bg-gray-100 dark:bg-neutral-800"
+          >
+            <img
+              src={sub.image}
+              alt={sub.name}
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+            <span className="absolute bottom-4 left-4 right-4 text-white font-bold text-base leading-snug line-clamp-2">
+              {sub.name}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AllProductsSection() {
+  const { user } = useAuth();
   const cached = getHomeCache();
   const [products, setProducts] = useState(cached?.allProducts ?? []);
   const [offset, setOffset] = useState(cached?.allProductsOffset ?? 0);
@@ -193,6 +227,8 @@ function AllProductsSection() {
     // Paint instantly from cache if we have it, but always refetch page one
     // in the background so a returning visit still picks up fresh data
     // (e.g. products added/edited elsewhere) instead of staying stale.
+    // Also refetches whenever auth state changes (login/logout), since the
+    // price fields the backend returns depend on the caller's role.
     api
       .get(`/products?limit=${PRODUCTS_PAGE_SIZE}&offset=0`)
       .then((res) => {
@@ -206,8 +242,7 @@ function AllProductsSection() {
         });
       })
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   async function loadMore() {
     setLoadingMore(true);
@@ -246,7 +281,7 @@ function AllProductsSection() {
         <p className="text-gray-500 dark:text-gray-400">No products found.</p>
       ) : (
         <>
-          <ProductGrid products={products} columns="lg:grid-cols-4 xl:grid-cols-5" />
+          <ProductGrid products={products} columns="md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" />
           {hasMore && (
             <button
               onClick={loadMore}
@@ -263,9 +298,11 @@ function AllProductsSection() {
 }
 
 export default function Home() {
+  const { user } = useAuth();
   const cached = getHomeCache();
   const [offerImage, setOfferImage] = useState(cached?.offerImage ?? null);
   const [hotCategories, setHotCategories] = useState(cached?.hotCategories ?? []);
+  const [hotSubcategories, setHotSubcategories] = useState(cached?.hotSubcategories ?? []);
   const [featuredProducts, setFeaturedProducts] = useState(cached?.featuredProducts ?? []);
   const [featuredCategories, setFeaturedCategories] = useState(cached?.featuredCategories ?? []);
   const [bestSelling, setBestSelling] = useState(cached?.bestSelling ?? []);
@@ -275,18 +312,22 @@ export default function Home() {
   useEffect(() => {
     // Refetch in the background even when cache exists, so a returning
     // visit shows instantly but still picks up fresh data quietly.
+    // Depends on `user` so a login/logout also triggers a refetch - the
+    // backend returns different price fields depending on the caller's role.
     Promise.all([
       api.get('/offers'),
       api.get('/analytics/hot-categories?limit=10'),
+      api.get('/analytics/hot-subcategories?limit=10'),
       api.get('/analytics/featured-products?limit=3'),
       api.get('/analytics/featured-categories'),
       api.get('/analytics/best-selling?limit=5'),
       api.get('/banners'),
     ])
-      .then(([offersRes, hotCatRes, featuredProdRes, featuredCatRes, bestSellingRes, bannersRes]) => {
+      .then(([offersRes, hotCatRes, hotSubcatRes, featuredProdRes, featuredCatRes, bestSellingRes, bannersRes]) => {
         const data = {
           offerImage: offersRes.data[0]?.image || null,
           hotCategories: hotCatRes.data,
+          hotSubcategories: hotSubcatRes.data,
           featuredProducts: featuredProdRes.data,
           featuredCategories: featuredCatRes.data,
           bestSelling: bestSellingRes.data,
@@ -294,6 +335,7 @@ export default function Home() {
         };
         setOfferImage(data.offerImage);
         setHotCategories(data.hotCategories);
+        setHotSubcategories(data.hotSubcategories);
         setFeaturedProducts(data.featuredProducts);
         setFeaturedCategories(data.featuredCategories);
         setBestSelling(data.bestSelling);
@@ -301,7 +343,7 @@ export default function Home() {
         setHomeCache(data);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-10">
@@ -332,7 +374,7 @@ export default function Home() {
             {featuredProducts.length > 0 && (
               <div>
                 <SectionHeading icon={faStar} title="Featured Products" />
-                <ProductGrid products={featuredProducts} columns="lg:grid-cols-3" />
+                <ProductGrid products={featuredProducts} columns="md:grid-cols-2 lg:grid-cols-3" />
               </div>
             )}
           </section>
@@ -361,10 +403,12 @@ export default function Home() {
               </div>
             )}
 
+            <SubcategorySpotlight subcategories={hotSubcategories} />
+
             {bestSelling.length > 0 && (
               <div>
                 <SectionHeading icon={faFire} title="Best Selling" />
-                <ProductGrid products={bestSelling} columns="lg:grid-cols-5" />
+                <ProductGrid products={bestSelling} columns="md:grid-cols-2 lg:grid-cols-5" />
               </div>
             )}
           </section>

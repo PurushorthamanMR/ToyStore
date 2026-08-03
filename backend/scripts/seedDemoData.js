@@ -1,5 +1,5 @@
 /**
- * One-off demo/test data seeder — NOT wired into the app.
+ * One-off demo/test data seeder - NOT wired into the app.
  * Run manually with: node scripts/seedDemoData.js
  *
  * Tops categories up to 30 (10 products each) and backfills ~3 months of
@@ -155,7 +155,7 @@ async function main() {
             name,
             slug,
             code,
-            `${name} — great addition to our ${cat.name.toLowerCase()} range.`,
+            `${name} - great addition to our ${cat.name.toLowerCase()} range.`,
             purchasePrice,
             salePrice,
             discountPercent,
@@ -173,16 +173,16 @@ async function main() {
     const productWeights = products.map(() => randInt(1, 8)); // popularity bias for order generation
 
     // 3. Demo customers
-    const [existingCustomers] = await conn.query('SELECT id, full_name, whatsapp_number FROM customers');
-    const existingCustomerNames = new Set(existingCustomers.map((c) => c.full_name));
+    const [existingCustomers] = await conn.query('SELECT id, name, whatsapp_number FROM customers');
+    const existingCustomerNames = new Set(existingCustomers.map((c) => c.name));
     const hashed = await bcrypt.hash('Demo@1234', 10);
     let phoneSeq = 941000000 + existingCustomers.length;
     for (const name of DEMO_CUSTOMER_NAMES) {
       if (existingCustomerNames.has(name)) continue;
       const phone = String(phoneSeq++);
       await conn.query(
-        `INSERT INTO customers (full_name, whatsapp_number, password) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)`,
+        `INSERT INTO customers (name, whatsapp_number, password) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name)`,
         [name, phone, hashed]
       );
     }

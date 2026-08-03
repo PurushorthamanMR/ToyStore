@@ -2,9 +2,11 @@ const pool = require('../config/db');
 const { slugify } = require('./categoryController');
 
 const BASE_SELECT = `
-  SELECT p.*, c.name AS category_name, c.slug AS category_slug
+  SELECT p.*, c.name AS category_name, c.slug AS category_slug,
+         sc.name AS subcategory_name, sc.slug AS subcategory_slug
   FROM products p
   LEFT JOIN categories c ON c.id = p.category_id
+  LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
 `;
 
 function canManage(user) {
@@ -29,7 +31,7 @@ function applyFieldVisibility(row, user) {
 
 async function listProducts(req, res) {
   try {
-    const { category, search, featured, limit, offset, active, lowStock } = req.query;
+    const { category, subcategory, search, featured, limit, offset, active, lowStock } = req.query;
     const where = [];
     const values = [];
     const isStaff = req.user?.type === 'staff';
@@ -45,9 +47,13 @@ async function listProducts(req, res) {
       where.push('c.slug = ?');
       values.push(category);
     }
+    if (subcategory) {
+      where.push('sc.slug = ?');
+      values.push(subcategory);
+    }
     if (search) {
-      where.push('(p.name LIKE ? OR p.product_code LIKE ? OR c.name LIKE ?)');
-      values.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      where.push('(p.name LIKE ? OR p.product_code LIKE ? OR c.name LIKE ? OR sc.name LIKE ?)');
+      values.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (featured === 'true') {
       where.push('p.featured = 1');
@@ -100,11 +106,39 @@ function validateDiscountPercent(value) {
   return !Number.isNaN(n) && n >= 0 && n <= 100;
 }
 
+function validateStock(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && Number.isInteger(n) && n >= 1;
+}
+
+async function checkProductCode(req, res) {
+  try {
+    const { code, excludeId } = req.query;
+    if (!code || !code.trim()) return res.json({ available: true });
+    const params = [code.trim()];
+    let sql = 'SELECT id FROM products WHERE product_code = ?';
+    if (excludeId) {
+      sql += ' AND id != ?';
+      params.push(excludeId);
+    }
+    const [rows] = await pool.query(sql, params);
+    res.json({ available: rows.length === 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to check product code' });
+  }
+}
+
+async function subcategoryBelongsToCategory(subcategoryId, categoryId) {
+  const [[row]] = await pool.query('SELECT category_id FROM subcategories WHERE id = ?', [subcategoryId]);
+  return !!row && String(row.category_id) === String(categoryId);
+}
+
 async function createProduct(req, res) {
   try {
     const {
       name, description, product_code, purchase_price, sale_price, discount_percent,
-      stock, image, category_id, featured
+      stock, image, category_id, subcategory_id, featured
     } = req.body;
     if (!name || sale_price === undefined) {
       return res.status(400).json({ message: 'Name and sale price are required' });
@@ -113,12 +147,19 @@ async function createProduct(req, res) {
     if (!validateDiscountPercent(discount)) {
       return res.status(400).json({ message: 'Discount percent must be between 0 and 100' });
     }
+    if (!validateStock(stock)) {
+      return res.status(400).json({ message: 'Stock must be a whole number of at least 1' });
+    }
+    if (subcategory_id && !(await subcategoryBelongsToCategory(subcategory_id, category_id))) {
+      return res.status(400).json({ message: 'Subcategory does not belong to selected category' });
+    }
     const slug = slugify(name);
     const [result] = await pool.query(
-      `INSERT INTO products (category_id, name, slug, product_code, description, purchase_price, sale_price, discount_percent, stock, image, featured)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (category_id, subcategory_id, name, slug, product_code, description, purchase_price, sale_price, discount_percent, stock, image, featured)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         category_id || null,
+        subcategory_id || null,
         name,
         slug,
         product_code || null,
@@ -126,7 +167,7 @@ async function createProduct(req, res) {
         purchase_price || 0,
         sale_price,
         discount,
-        stock || 0,
+        stock,
         image || null,
         featured ? 1 : 0
       ]
@@ -146,8 +187,18 @@ async function updateProduct(req, res) {
     const { id } = req.params;
     const {
       name, description, product_code, purchase_price, sale_price, discount_percent,
-      stock, image, category_id, featured
+      stock, image, category_id, subcategory_id, featured
     } = req.body;
+
+    if (subcategory_id) {
+      const effectiveCategoryId = category_id !== undefined
+        ? category_id
+        : (await pool.query('SELECT category_id FROM products WHERE id = ?', [id]))[0][0]?.category_id;
+      if (!(await subcategoryBelongsToCategory(subcategory_id, effectiveCategoryId))) {
+        return res.status(400).json({ message: 'Subcategory does not belong to selected category' });
+      }
+    }
+
     const fields = [];
     const values = [];
 
@@ -164,9 +215,16 @@ async function updateProduct(req, res) {
       fields.push('discount_percent = ?');
       values.push(discount);
     }
-    if (stock !== undefined) { fields.push('stock = ?'); values.push(stock); }
+    if (stock !== undefined) {
+      if (!validateStock(stock)) {
+        return res.status(400).json({ message: 'Stock must be a whole number of at least 1' });
+      }
+      fields.push('stock = ?');
+      values.push(stock);
+    }
     if (image !== undefined) { fields.push('image = ?'); values.push(image); }
     if (category_id !== undefined) { fields.push('category_id = ?'); values.push(category_id || null); }
+    if (subcategory_id !== undefined) { fields.push('subcategory_id = ?'); values.push(subcategory_id || null); }
     if (featured !== undefined) { fields.push('featured = ?'); values.push(featured ? 1 : 0); }
 
     if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update' });
@@ -204,4 +262,4 @@ async function restoreProduct(req, res) {
   }
 }
 
-module.exports = { listProducts, getProduct, createProduct, updateProduct, deleteProduct, restoreProduct };
+module.exports = { listProducts, getProduct, createProduct, updateProduct, deleteProduct, restoreProduct, checkProductCode };

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 import { useCart } from '../context/CartContext';
+import { useSettings } from '../context/SettingsContext';
 import api from '../api/client';
 
 const ORDER_BAR_PREFIXES = ['/cart', '/checkout', '/admin', '/login', '/register'];
@@ -11,6 +12,7 @@ const ORDER_BAR_PREFIXES = ['/cart', '/checkout', '/admin', '/login', '/register
 export default function FloatingWhatsApp() {
   const [number, setNumber] = useState(null);
   const { count } = useCart();
+  const { settings } = useSettings();
   const location = useLocation();
 
   useEffect(() => {
@@ -23,7 +25,8 @@ export default function FloatingWhatsApp() {
   if (!number) return null;
 
   const orderBarShowing = count > 0 && !ORDER_BAR_PREFIXES.some((prefix) => location.pathname.startsWith(prefix));
-  const href = `https://wa.me/${number}?text=${encodeURIComponent('Hi, I have an inquiry about City Cycle Stores Toys.')}`;
+  const storeName = settings?.store_name || 'City Cycle Stores Toys';
+  const href = `https://wa.me/${number}?text=${encodeURIComponent(`Hi, I have an inquiry about ${storeName}.`)}`;
 
   return (
     <motion.a

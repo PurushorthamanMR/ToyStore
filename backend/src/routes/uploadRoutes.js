@@ -20,10 +20,12 @@ function fileFilter(req, file, cb) {
   cb(null, true);
 }
 
+const MAX_FILE_SIZE_MB = 10;
+
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
 });
 
 const router = express.Router();
@@ -31,6 +33,9 @@ const router = express.Router();
 router.post('/', authenticate, requireAdmin, upload.single('image'), uploadImage);
 
 router.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ message: `Image is too large. Maximum allowed size is ${MAX_FILE_SIZE_MB}MB.` });
+  }
   res.status(400).json({ message: err.message || 'Upload failed' });
 });
 

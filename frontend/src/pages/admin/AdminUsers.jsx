@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck, faXmark, faPen, faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
 import Modal from '../../components/Modal';
+import AdminMobileRow from '../../components/AdminMobileRow';
 import { confirmAction } from '../../lib/alert';
-
-const ROLES = ['Customer', 'Seller', 'Admin'];
+import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
+import { isValidEmail } from '../../lib/validators';
+import UserForm from './forms/UserForm';
 
 const ROLE_LABELS = {
-  Customer: 'Customer',
   Seller: 'Seller',
   Admin: 'Admin',
-  SuperAdmin: 'Super Admin',
 };
 
 const STATUS_TABS = ['pending', 'approved', 'rejected'];
@@ -43,13 +44,24 @@ function StatusTabs({ status, onChange }) {
 }
 
 export default function AdminUsers() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusTab, setStatusTab] = useState('pending');
   const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', shop_name: '', city: '' });
   const [editError, setEditError] = useState('');
+
+  const emailInvalid = !!editForm.email && !isValidEmail(editForm.email);
+  const emailStatus = useDuplicateCheck('/users/check', editForm.email, {
+    extraParams: { field: 'email', excludeId: editingUser?.id },
+    skip: !editForm.email || emailInvalid,
+  });
+  const phoneStatus = useDuplicateCheck('/users/check', editForm.phone, {
+    extraParams: { field: 'phone', excludeId: editingUser?.id },
+    skip: !editForm.phone,
+  });
 
   function load() {
     setLoading(true);
@@ -61,11 +73,6 @@ export default function AdminUsers() {
   }
 
   useEffect(load, [statusTab]);
-
-  async function changeRole(id, role) {
-    await api.put(`/users/${id}/role`, { role });
-    load();
-  }
 
   async function approve(id) {
     await api.put(`/users/${id}/approve`);
@@ -85,13 +92,25 @@ export default function AdminUsers() {
 
   function startEdit(u) {
     setEditingUser(u);
-    setEditForm({ name: u.name, email: u.email, phone: u.phone || '' });
+    setEditForm({ name: u.name, email: u.email, phone: u.phone || '', shop_name: u.shop_name || '', city: u.city || '' });
     setEditError('');
   }
 
   async function handleEditSubmit(e) {
     e.preventDefault();
     setEditError('');
+    if (emailInvalid) {
+      setEditError('Enter a valid email address');
+      return;
+    }
+    if (emailStatus === 'duplicate') {
+      setEditError('That email is already in use');
+      return;
+    }
+    if (phoneStatus === 'duplicate') {
+      setEditError('That phone number is already in use');
+      return;
+    }
     try {
       await api.put(`/users/${editingUser.id}`, editForm);
       setEditingUser(null);
@@ -113,35 +132,20 @@ export default function AdminUsers() {
       <Modal open={!!editingUser} onClose={() => setEditingUser(null)} title="Edit User">
         <form onSubmit={handleEditSubmit} className="space-y-3">
           {editError && <p className="text-red-600 text-sm">{editError}</p>}
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Name</label>
-            <input
-              required
-              value={editForm.name}
-              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Email</label>
-            <input
-              type="email"
-              required
-              value={editForm.email}
-              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Phone</label>
-            <input
-              value={editForm.phone}
-              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
+          <UserForm
+            form={editForm}
+            setForm={setEditForm}
+            role={editingUser?.role}
+            emailInvalid={emailInvalid}
+            emailStatus={emailStatus}
+            phoneStatus={phoneStatus}
+          />
           <div className="flex gap-2">
-            <button type="submit" className="bg-wa-green hover:bg-wa-green-dark text-white font-semibold px-4 py-2 rounded-md">
+            <button
+              type="submit"
+              disabled={emailInvalid || emailStatus === 'duplicate' || phoneStatus === 'duplicate'}
+              className="bg-wa-green hover:bg-wa-green-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-md"
+            >
               Save
             </button>
             <button
@@ -155,13 +159,48 @@ export default function AdminUsers() {
         </form>
       </Modal>
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {users.map((u) => {
+          const actions =
+            statusTab === 'pending'
+              ? [
+                  { icon: faCheck, label: 'Approve', tone: 'success', onClick: () => approve(u.id) },
+                  { icon: faXmark, label: 'Reject', tone: 'danger', onClick: () => reject(u.id) },
+                ]
+              : statusTab === 'rejected'
+              ? [{ icon: faRotateRight, label: 'Restore', tone: 'success', onClick: () => approve(u.id) }]
+              : [
+                  { icon: faPen, label: 'Edit', tone: 'edit', onClick: () => navigate(`/admin/users/${u.id}/edit`) },
+                  { icon: faXmark, label: 'Reject', tone: 'danger', onClick: () => handleReject(u.id) },
+                ];
+          return (
+            <AdminMobileRow
+              key={u.id}
+              image={null}
+              title={u.name}
+              subtitle={`${u.email} · ${ROLE_LABELS[u.role] || u.role}`}
+              meta={
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${STATUS_STYLES[u.status]}`}>
+                  {u.status}
+                </span>
+              }
+              onView={() => navigate(`/admin/users/${u.id}`)}
+              actions={actions}
+            />
+          );
+        })}
+        {users.length === 0 && <p className="p-4 text-gray-500 dark:text-gray-400">No {statusTab} users.</p>}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>
               <th className="p-3">Name</th>
               <th className="p-3">Email</th>
               <th className="p-3">Phone</th>
+              <th className="p-3">Shop</th>
+              <th className="p-3">City</th>
               <th className="p-3">Role</th>
               <th className="p-3">Status</th>
               <th className="p-3">Joined</th>
@@ -174,16 +213,12 @@ export default function AdminUsers() {
                 <td className="p-3 font-medium">{u.name}</td>
                 <td className="p-3">{u.email}</td>
                 <td className="p-3 text-gray-500 dark:text-gray-400">{u.phone || '-'}</td>
+                <td className="p-3 text-gray-500 dark:text-gray-400">{u.shop_name || '-'}</td>
+                <td className="p-3 text-gray-500 dark:text-gray-400">{u.city || '-'}</td>
                 <td className="p-3">
-                  <select
-                    value={u.role}
-                    onChange={(e) => changeRole(u.id, e.target.value)}
-                    className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-2 py-1"
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                    ))}
-                  </select>
+                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300">
+                    {ROLE_LABELS[u.role] || u.role}
+                  </span>
                 </td>
                 <td className="p-3">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${STATUS_STYLES[u.status]}`}>
@@ -247,7 +282,7 @@ export default function AdminUsers() {
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-4 text-gray-500 dark:text-gray-400">No {statusTab} users.</td>
+                <td colSpan={9} className="p-4 text-gray-500 dark:text-gray-400">No {statusTab} users.</td>
               </tr>
             )}
           </tbody>
