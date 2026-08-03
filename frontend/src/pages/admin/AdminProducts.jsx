@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen, faTrash, faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
 import { formatRs } from '../../lib/format';
 import Modal from '../../components/Modal';
-import ImageUploadBox from '../../components/ImageUploadBox';
 import ActiveTabs from '../../components/ActiveTabs';
 import AdminFilterBar from '../../components/AdminFilterBar';
 import Pagination from '../../components/Pagination';
+import AdminMobileRow from '../../components/AdminMobileRow';
 import { confirmAction } from '../../lib/alert';
+import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
+import ProductForm from './forms/ProductForm';
 
 const PAGE_SIZE = 9;
 
@@ -22,12 +25,15 @@ const emptyForm = {
   stock: '',
   image: '',
   category_id: '',
+  subcategory_id: '',
   featured: false,
 };
 
 export default function AdminProducts() {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
@@ -35,11 +41,19 @@ export default function AdminProducts() {
   const [activeTab, setActiveTab] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [subcategoryFilter, setSubcategoryFilter] = useState('');
   const [page, setPage] = useState(1);
+
+  const codeStatus = useDuplicateCheck('/products/check-code', form.product_code, {
+    paramName: 'code',
+    extraParams: { excludeId: editingId || undefined },
+    skip: !form.product_code,
+  });
 
   function load() {
     api.get(`/products?active=${activeTab ? '1' : '0'}`).then((res) => setProducts(res.data));
     api.get('/categories').then((res) => setCategories(res.data));
+    api.get('/subcategories').then((res) => setSubcategories(res.data));
   }
 
   useEffect(load, [activeTab]);
@@ -61,13 +75,23 @@ export default function AdminProducts() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (codeStatus === 'duplicate') {
+      setError('This product code is already in use');
+      return;
+    }
+    const stockValue = Number(form.stock);
+    if (!Number.isInteger(stockValue) || stockValue < 1) {
+      setError('Stock must be a whole number of at least 1');
+      return;
+    }
     const payload = {
       ...form,
       purchase_price: Number(form.purchase_price) || 0,
       sale_price: Number(form.sale_price),
       discount_percent: form.discount_percent === '' ? 0 : Number(form.discount_percent),
-      stock: Number(form.stock) || 0,
+      stock: stockValue,
       category_id: form.category_id || null,
+      subcategory_id: form.subcategory_id || null,
     };
     try {
       if (editingId) {
@@ -94,6 +118,7 @@ export default function AdminProducts() {
       stock: p.stock,
       image: p.image || '',
       category_id: p.category_id || '',
+      subcategory_id: p.subcategory_id || '',
       featured: !!p.featured,
     });
     setError('');
@@ -117,12 +142,17 @@ export default function AdminProducts() {
     const matchesSearch =
       !q || p.name.toLowerCase().includes(q) || (p.product_code || '').toLowerCase().includes(q);
     const matchesCategory = !categoryFilter || String(p.category_id) === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesSubcategory = !subcategoryFilter || String(p.subcategory_id) === subcategoryFilter;
+    return matchesSearch && matchesCategory && matchesSubcategory;
   });
+
+  const filterSubcategoryOptions = categoryFilter
+    ? subcategories.filter((sc) => String(sc.category_id) === categoryFilter)
+    : subcategories;
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, activeTab]);
+  }, [search, categoryFilter, subcategoryFilter, activeTab]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const pagedProducts = filteredProducts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -140,114 +170,15 @@ export default function AdminProducts() {
       </div>
 
       <Modal open={modalOpen} onClose={closeModal} title={editingId ? 'Edit Product' : 'Add Product'} maxWidth="max-w-2xl">
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {error && <p className="text-red-600 text-sm sm:col-span-2">{error}</p>}
-          <input
-            required
-            placeholder="Product name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2 sm:col-span-2"
-          />
-          <input
-            placeholder="Product Code (e.g. 1001)"
-            value={form.product_code}
-            onChange={(e) => setForm({ ...form, product_code: e.target.value })}
-            className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2 sm:col-span-2"
-          />
-          <textarea
-            placeholder="Description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2 sm:col-span-2"
-            rows={2}
-          />
-
-          <div className="sm:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Purchase Price</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="e.g. 2400"
-                value={form.purchase_price}
-                onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
-                className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Sale Price</label>
-              <input
-                required
-                type="number"
-                step="0.01"
-                placeholder="e.g. 3650"
-                value={form.sale_price}
-                onChange={(e) => setForm({ ...form, sale_price: e.target.value })}
-                className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Discount %</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                placeholder="e.g. 5"
-                value={form.discount_percent}
-                onChange={(e) => setForm({ ...form, discount_percent: e.target.value })}
-                className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Stock</label>
-              <input
-                required
-                type="number"
-                placeholder="e.g. 25"
-                value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: e.target.value })}
-                className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-              />
-            </div>
-          </div>
-          {form.sale_price && form.discount_percent > 0 && (
-            <p className="sm:col-span-2 -mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Final price: {formatRs(Number(form.sale_price) - (Number(form.sale_price) * Number(form.discount_percent)) / 100)}
-            </p>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Category</label>
-            <select
-              value={form.category_id}
-              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3">
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+          <ProductForm form={form} setForm={setForm} categories={categories} subcategories={subcategories} codeStatus={codeStatus} />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={codeStatus === 'duplicate'}
+              className="bg-wa-green hover:bg-wa-green-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-md"
             >
-              <option value="">No category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Image</label>
-            <ImageUploadBox value={form.image} onChange={(url) => setForm({ ...form, image: url })} />
-          </div>
-
-          <label className="sm:col-span-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={form.featured}
-              onChange={(e) => setForm({ ...form, featured: e.target.checked })}
-            />
-            Featured product
-          </label>
-
-          <div className="sm:col-span-2 flex gap-2">
-            <button type="submit" className="bg-wa-green hover:bg-wa-green-dark text-white font-semibold px-4 py-2 rounded-md">
               {editingId ? 'Update Product' : 'Add Product'}
             </button>
             <button
@@ -266,7 +197,7 @@ export default function AdminProducts() {
       <AdminFilterBar search={search} onSearchChange={setSearch} placeholder="Search by name or code...">
         <select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          onChange={(e) => { setCategoryFilter(e.target.value); setSubcategoryFilter(''); }}
           className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm"
         >
           <option value="">All categories</option>
@@ -274,9 +205,53 @@ export default function AdminProducts() {
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+        <select
+          value={subcategoryFilter}
+          onChange={(e) => setSubcategoryFilter(e.target.value)}
+          className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="">All subcategories</option>
+          {filterSubcategoryOptions.map((sc) => (
+            <option key={sc.id} value={sc.id}>{sc.name}</option>
+          ))}
+        </select>
       </AdminFilterBar>
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {pagedProducts.map((p) => (
+          <AdminMobileRow
+            key={p.id}
+            image={p.image}
+            title={p.name}
+            subtitle={[p.category_name, p.subcategory_name].filter(Boolean).join(' · ') || p.product_code}
+            meta={
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                  p.stock === 0
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                    : 'bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-300'
+                }`}
+              >
+                {p.stock === 0 ? 'Out of stock' : `${p.stock} left`}
+              </span>
+            }
+            onView={() => navigate(`/admin/products/${p.id}`)}
+            actions={
+              activeTab
+                ? [
+                    { icon: faPen, label: 'Edit', tone: 'edit', onClick: () => navigate(`/admin/products/${p.id}/edit`) },
+                    { icon: faTrash, label: 'Delete', tone: 'danger', onClick: () => handleDelete(p.id) },
+                  ]
+                : [{ icon: faRotateRight, label: 'Restore', tone: 'success', onClick: () => handleRestore(p.id) }]
+            }
+          />
+        ))}
+        {filteredProducts.length === 0 && (
+          <p className="p-4 text-gray-500 dark:text-gray-400">No products found.</p>
+        )}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>
@@ -289,6 +264,7 @@ export default function AdminProducts() {
               <th className="p-3">Final Price</th>
               <th className="p-3">Stock</th>
               <th className="p-3">Category</th>
+              <th className="p-3">Subcategory</th>
               <th className="p-3">Actions</th>
             </tr>
           </thead>
@@ -314,6 +290,7 @@ export default function AdminProducts() {
                 <td className="p-3 text-wa-green-dark dark:text-wa-green font-semibold">{formatRs(p.discount_price)}</td>
                 <td className="p-3">{p.stock}</td>
                 <td className="p-3 text-gray-500 dark:text-gray-400">{p.category_name || '-'}</td>
+                <td className="p-3 text-gray-500 dark:text-gray-400">{p.subcategory_name || '-'}</td>
                 <td className="p-3 whitespace-nowrap">
                   {activeTab ? (
                     <div className="flex gap-2">

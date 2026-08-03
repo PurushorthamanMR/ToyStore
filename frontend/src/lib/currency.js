@@ -1,5 +1,5 @@
 // Approximate, hardcoded LKR conversion rates for display purposes only.
-// The store always charges and records orders in LKR — this never affects checkout/orders.
+// The store always charges and records orders in LKR - this never affects checkout/orders.
 export const CURRENCIES = [
   { code: 'LKR', symbol: 'Rs.', name: 'Sri Lankan Rupee', rate: 1 },
   { code: 'USD', symbol: '$', name: 'US Dollar', rate: 1 / 300 },

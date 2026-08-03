@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
+const { ANONYMOUS_WHATSAPP_MARKER, ANONYMOUS_NAME } = require('../utils/anonymousCustomer');
+const { ANONYMOUS_SELLER_MARKER, ANONYMOUS_SELLER_NAME } = require('../utils/anonymousSeller');
 
 async function tableExists(connection, dbName, table) {
   const [rows] = await connection.query(
@@ -30,6 +33,17 @@ async function migrateIsActive(connection, dbName, table, afterColumn) {
   );
 }
 
+async function addColumnIfMissing(connection, dbName, table, column, definition, afterColumn) {
+  if (!(await tableExists(connection, dbName, table))) return;
+  const colNames = await getColumnNames(connection, dbName, table);
+  if (colNames.includes(column)) return;
+
+  console.log(`[db] Adding ${column} column to ${table}...`);
+  await connection.query(
+    `ALTER TABLE ${table} ADD COLUMN ${column} ${definition} AFTER ${afterColumn}`
+  );
+}
+
 async function migrateUserStatusRejected(connection, dbName) {
   if (!(await tableExists(connection, dbName, 'users'))) return;
   const [rows] = await connection.query(
@@ -54,10 +68,11 @@ async function migrateOrdersSchema(connection, dbName) {
       await connection.query(`
         CREATE TABLE customers (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          full_name VARCHAR(100) NOT NULL,
+          name VARCHAR(100) NOT NULL,
           whatsapp_number VARCHAR(30) NOT NULL UNIQUE,
           email VARCHAR(150) DEFAULT NULL,
           password VARCHAR(255) NOT NULL,
+          is_active TINYINT(1) NOT NULL DEFAULT 1,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
@@ -87,6 +102,15 @@ async function migrateOrdersSchema(connection, dbName) {
       `ALTER TABLE orders MODIFY COLUMN status ENUM('pending', 'successful', 'return', 'cancelled') NOT NULL DEFAULT 'pending'`
     );
   }
+}
+
+async function migrateCustomerName(connection, dbName) {
+  if (!(await tableExists(connection, dbName, 'customers'))) return;
+  const colNames = await getColumnNames(connection, dbName, 'customers');
+  if (!colNames.includes('full_name') || colNames.includes('name')) return;
+
+  console.log('[db] Renaming customers.full_name to customers.name...');
+  await connection.query(`ALTER TABLE customers CHANGE COLUMN full_name name VARCHAR(100) NOT NULL`);
 }
 
 async function migrateProductPricing(connection, dbName) {
@@ -195,6 +219,17 @@ async function migrateOrderItemsProductCode(connection, dbName) {
     SET oi.product_code = p.product_code
     WHERE oi.product_code IS NULL
   `);
+}
+
+async function migrateOrderItemsReturnedQuantity(connection, dbName) {
+  if (!(await tableExists(connection, dbName, 'order_items'))) return;
+  const colNames = await getColumnNames(connection, dbName, 'order_items');
+  if (colNames.includes('returned_quantity')) return;
+
+  console.log('[db] Adding returned_quantity column to order_items...');
+  await connection.query(
+    `ALTER TABLE order_items ADD COLUMN returned_quantity INT NOT NULL DEFAULT 0 AFTER quantity`
+  );
 }
 
 async function migrateUserRoles(connection, dbName) {
@@ -325,6 +360,105 @@ async function ensureCoreUsers(connection) {
   }
 }
 
+async function migrateProductSubcategory(connection, dbName) {
+  if (!(await tableExists(connection, dbName, 'products'))) return;
+  const colNames = await getColumnNames(connection, dbName, 'products');
+  if (colNames.includes('subcategory_id')) return;
+
+  console.log('[db] Adding subcategory_id column to products...');
+  await connection.query(`ALTER TABLE products ADD COLUMN subcategory_id INT NULL AFTER category_id`);
+  await connection.query(
+    `ALTER TABLE products ADD CONSTRAINT fk_products_subcategory_id FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE SET NULL`
+  );
+}
+
+/** Seeds the shared guest-checkout customer, looked up by a reserved marker
+ *  (not a hardcoded id) so it works regardless of existing table state. */
+async function ensureAnonymousCustomer(connection) {
+  const [existing] = await connection.query(
+    'SELECT id FROM customers WHERE whatsapp_number = ? LIMIT 1',
+    [ANONYMOUS_WHATSAPP_MARKER]
+  );
+  if (existing.length > 0) return;
+
+  const randomPassword = crypto.randomBytes(32).toString('hex');
+  const hashed = await bcrypt.hash(randomPassword, 10);
+  const [result] = await connection.query(
+    'INSERT INTO customers (name, whatsapp_number, password) VALUES (?, ?, ?)',
+    [ANONYMOUS_NAME, ANONYMOUS_WHATSAPP_MARKER, hashed]
+  );
+  console.log(`[db] Anonymous guest customer created (id=${result.insertId}).`);
+}
+
+/** Seeds the shared wholesale-checkout seller (a staff user with role
+ *  Seller), looked up by a reserved marker email - orders placed via the
+ *  no-login wholesale-view link attribute to this account so they get
+ *  cost pricing and show up distinctly in the admin's order list. */
+async function ensureAnonymousSeller(connection) {
+  const [existing] = await connection.query(
+    'SELECT id FROM users WHERE email = ? LIMIT 1',
+    [ANONYMOUS_SELLER_MARKER]
+  );
+  if (existing.length > 0) return;
+
+  const [[role]] = await connection.query("SELECT id FROM user_roles WHERE name = 'Seller'");
+  if (!role) return;
+
+  const randomPassword = crypto.randomBytes(32).toString('hex');
+  const hashed = await bcrypt.hash(randomPassword, 10);
+  const [result] = await connection.query(
+    `INSERT INTO users (name, email, password, role_id, status, is_active) VALUES (?, ?, ?, ?, 'approved', 1)`,
+    [ANONYMOUS_SELLER_NAME, ANONYMOUS_SELLER_MARKER, hashed, role.id]
+  );
+  console.log(`[db] Anonymous seller user created (id=${result.insertId}).`);
+}
+
+/** Seeds the single settings row, carrying forward ADMIN_WHATSAPP_NUMBER from
+ *  .env (if set) so an existing deployment keeps its configured number after
+ *  the env var is removed in favor of the Admin Settings page. */
+async function ensureSettingsRow(connection) {
+  const [existing] = await connection.query('SELECT id FROM settings WHERE id = 1');
+  if (existing.length > 0) return;
+
+  await connection.query(
+    'INSERT INTO settings (id, whatsapp_number) VALUES (1, ?)',
+    [process.env.ADMIN_WHATSAPP_NUMBER || null]
+  );
+  console.log('[db] Settings row created.');
+}
+
+/** Ensures the wholesale-view share link has a secret token, generating one
+ *  the first time this runs (fresh install or upgrade from a version without
+ *  the wholesale view feature). */
+async function ensureWholesaleToken(connection) {
+  const [[row]] = await connection.query('SELECT wholesale_token FROM settings WHERE id = 1');
+  if (row?.wholesale_token) return;
+
+  const token = crypto.randomBytes(24).toString('hex');
+  await connection.query('UPDATE settings SET wholesale_token = ? WHERE id = 1', [token]);
+  console.log('[db] Wholesale view token generated.');
+}
+
+const DEFAULT_TERMS_CONTENT = `Update Soon`;
+
+const DEFAULT_RETURN_POLICY_CONTENT = `Update Soon`;
+
+const DEFAULT_PRIVACY_POLICY_CONTENT = `Update Soon`;
+
+/** Seeds default Terms/Return/Privacy content the first time these columns
+ *  are empty, so the public policy pages aren't blank out of the box - the
+ *  admin can rewrite this from the Admin Settings > Legal Pages section. */
+async function ensureLegalContent(connection) {
+  await connection.query(
+    `UPDATE settings SET
+       terms_content = COALESCE(terms_content, ?),
+       return_policy_content = COALESCE(return_policy_content, ?),
+       privacy_policy_content = COALESCE(privacy_policy_content, ?)
+     WHERE id = 1`,
+    [DEFAULT_TERMS_CONTENT, DEFAULT_RETURN_POLICY_CONTENT, DEFAULT_PRIVACY_POLICY_CONTENT]
+  );
+}
+
 async function migrate() {
   const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
 
@@ -350,13 +484,32 @@ async function migrate() {
     await migrateProductCode(connection, DB_NAME);
     await migrateIsActive(connection, DB_NAME, 'products', 'featured');
     await migrateIsActive(connection, DB_NAME, 'categories', 'image');
+    await migrateIsActive(connection, DB_NAME, 'customers', 'password');
     await migrateOrdersSchema(connection, DB_NAME);
+    await migrateCustomerName(connection, DB_NAME);
     await migrateOrderItemsProductCode(connection, DB_NAME);
+    await migrateOrderItemsReturnedQuantity(connection, DB_NAME);
+    await addColumnIfMissing(connection, DB_NAME, 'users', 'shop_name', 'VARCHAR(150)', 'address');
+    await addColumnIfMissing(connection, DB_NAME, 'users', 'city', 'VARCHAR(100)', 'shop_name');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'store_logo', 'VARCHAR(255)', 'store_short_name');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'address', 'VARCHAR(255)', 'whatsapp_number');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'email', 'VARCHAR(150)', 'address');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'wholesale_token', 'VARCHAR(64) NULL', 'theme_color_dark');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'terms_content', 'LONGTEXT', 'wholesale_token');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'return_policy_content', 'LONGTEXT', 'terms_content');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'privacy_policy_content', 'LONGTEXT', 'return_policy_content');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     await connection.query(schemaSql);
 
+    await migrateProductSubcategory(connection, DB_NAME);
+
     await ensureCoreUsers(connection);
+    await ensureAnonymousCustomer(connection);
+    await ensureAnonymousSeller(connection);
+    await ensureSettingsRow(connection);
+    await ensureWholesaleToken(connection);
+    await ensureLegalContent(connection);
 
     console.log(`[db] Database "${DB_NAME}" and tables are ready.`);
   } finally {

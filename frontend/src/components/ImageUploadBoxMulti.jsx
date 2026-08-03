@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCamera, faXmark } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
 
+const MAX_FILE_SIZE_MB = 10;
+
 export default function ImageUploadBoxMulti({ value = [], onChange }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -10,6 +12,12 @@ export default function ImageUploadBoxMulti({ value = [], onChange }) {
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+    const oversized = files.find((file) => file.size > MAX_FILE_SIZE_MB * 1024 * 1024);
+    if (oversized) {
+      setError(`"${oversized.name}" is too large. Maximum allowed size is ${MAX_FILE_SIZE_MB}MB.`);
+      e.target.value = '';
+      return;
+    }
     setUploading(true);
     setError('');
     try {
@@ -57,6 +65,7 @@ export default function ImageUploadBoxMulti({ value = [], onChange }) {
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {uploading ? 'Uploading...' : 'Click to upload image(s)'}
         </span>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">Max {MAX_FILE_SIZE_MB}MB each</span>
         <input
           type="file"
           accept="image/*"

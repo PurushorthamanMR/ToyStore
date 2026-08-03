@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PasswordInput from '../components/PasswordInput';
+import FieldStatus from '../components/FieldStatus';
+import { useDuplicateCheck } from '../lib/useDuplicateCheck';
+import { isValidEmail } from '../lib/validators';
+import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
 
 export default function Register() {
   const { register } = useAuth();
@@ -10,9 +14,31 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const phoneStatus = useDuplicateCheck('/customers/check', form.whatsapp_number, {
+    extraParams: { field: 'phone' },
+    skip: !form.whatsapp_number,
+  });
+  const emailStatus = useDuplicateCheck('/customers/check', form.email, {
+    extraParams: { field: 'email' },
+    skip: !form.email || !isValidEmail(form.email),
+  });
+  const emailInvalid = !!form.email && !isValidEmail(form.email);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (phoneStatus === 'duplicate') {
+      setError('An account with this WhatsApp number already exists');
+      return;
+    }
+    if (emailInvalid) {
+      setError('Enter a valid email address');
+      return;
+    }
+    if (emailStatus === 'duplicate') {
+      setError('An account with this email already exists');
+      return;
+    }
     setLoading(true);
     try {
       await register(form);
@@ -25,70 +51,78 @@ export default function Register() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none p-6">
-        <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-gray-100">Create an Account</h2>
-        {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Full Name</label>
-            <input
-              required
-              value={form.full_name}
-              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">WhatsApp Number</label>
-            <input
-              required
-              placeholder="e.g. 94771234567"
-              value={form.whatsapp_number}
-              onChange={(e) => setForm({ ...form, whatsapp_number: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Email (optional)</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Password</label>
-            <PasswordInput
-              required
-              minLength={6}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-wa-green hover:bg-wa-green-dark disabled:bg-gray-300 dark:disabled:bg-neutral-700 text-white font-semibold py-2.5 rounded-md"
-          >
-            {loading ? 'Creating account...' : 'Register'}
-          </button>
-        </form>
-        <p className="text-sm text-center mt-4 text-gray-700 dark:text-gray-300">
-          Already have an account?{' '}
-          <Link to="/login" className="text-wa-green-dark dark:text-wa-green font-semibold hover:underline">
-            Login
-          </Link>
-        </p>
-        <p className="text-sm text-center mt-2 text-gray-700 dark:text-gray-300">
-          Want to sell on our store?{' '}
-          <Link to="/apply-seller" className="text-wa-green-dark dark:text-wa-green font-semibold hover:underline">
-            Apply as a Seller
-          </Link>
-        </p>
+    <>
+      <div className="hidden md:block">
+        <h2 className="text-xl font-bold mb-1 text-gray-900 dark:text-gray-100">Create an Account</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Register to start shopping with us.</p>
       </div>
-    </div>
+      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      <form onSubmit={handleSubmit} className="space-y-5 md:space-y-4">
+        <div>
+          <label className={authLabelClass}>Full Name</label>
+          <input
+            required
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            className={authInputClass}
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>WhatsApp Number</label>
+          <input
+            required
+            placeholder="e.g. 94771234567"
+            value={form.whatsapp_number}
+            onChange={(e) => setForm({ ...form, whatsapp_number: e.target.value })}
+            className={authInputClass}
+          />
+          <FieldStatus status={phoneStatus} duplicateMessage="An account with this WhatsApp number already exists" />
+        </div>
+        <div>
+          <label className={authLabelClass}>Email (optional)</label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className={authInputClass}
+          />
+          <FieldStatus
+            status={emailStatus}
+            duplicateMessage="An account with this email already exists"
+            invalid={emailInvalid}
+            invalidMessage="Enter a valid email address"
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>Password</label>
+          <PasswordInput
+            required
+            minLength={6}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            className={authInputClass}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading || phoneStatus === 'duplicate' || emailStatus === 'duplicate' || emailInvalid}
+          className={`${authButtonClass} mt-2`}
+        >
+          {loading ? 'Creating account...' : 'Register'}
+        </button>
+      </form>
+      <p className="text-sm text-center mt-6 md:mt-4 text-gray-500 dark:text-gray-400">
+        Already have an account?{' '}
+        <Link to="/login" className="text-wa-green-dark dark:text-wa-green font-bold hover:underline">
+          Login
+        </Link>
+      </p>
+      <p className="text-sm text-center mt-2 text-gray-500 dark:text-gray-400">
+        Want to be a seller?{' '}
+        <Link to="/apply-seller" className="text-wa-green-dark dark:text-wa-green font-bold hover:underline">
+          Apply as a Seller
+        </Link>
+      </p>
+    </>
   );
 }

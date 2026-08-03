@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
 import { formatRs } from '../../lib/format';
-import { confirmAction } from '../../lib/alert';
+import { confirmAction, errorAlert } from '../../lib/alert';
 import AdminFilterBar from '../../components/AdminFilterBar';
 import Pagination from '../../components/Pagination';
+import AdminMobileRow from '../../components/AdminMobileRow';
+import Modal from '../../components/Modal';
+import OrderStatusPanel, { STATUS_LABELS } from './forms/OrderStatusPanel';
 
 const PAGE_SIZE = 9;
-
-const STATUSES = ['pending', 'successful', 'return', 'cancelled'];
 
 const STATUS_STYLES = {
   pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
@@ -20,15 +22,20 @@ const STATUS_STYLES = {
 
 const STATUS_TABS = [
   { key: 'pending', label: 'Pending' },
-  { key: 'successful', label: 'Success' },
+  { key: 'successful', label: 'Approved' },
   { key: 'cancelled', label: 'Cancel' },
   { key: 'return', label: 'Return' },
 ];
 
 export default function AdminOrders() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [statusDraft, setStatusDraft] = useState('pending');
+  const [returnQtys, setReturnQtys] = useState({});
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [savingReturn, setSavingReturn] = useState(false);
   const [statusTab, setStatusTab] = useState('pending');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -43,16 +50,67 @@ export default function AdminOrders() {
     setPage(1);
   }, [search, statusTab]);
 
-  async function updateStatus(id, status) {
-    setEditingOrderId(null);
+  function openEdit(order) {
+    setEditingOrder(order);
+    setStatusDraft(order.status);
+    setReturnQtys({});
+  }
+
+  function closeEdit() {
+    setEditingOrder(null);
+  }
+
+  async function handleStatusSave() {
+    if (statusDraft === editingOrder.status) {
+      closeEdit();
+      return;
+    }
     const ok = await confirmAction({
-      title: `Mark order #${id} as ${status}?`,
+      title: `Mark order #${editingOrder.id} as ${STATUS_LABELS[statusDraft]}?`,
+      text:
+        statusDraft === 'successful'
+          ? 'This will reduce stock for the items in this order.'
+          : editingOrder.status === 'successful'
+          ? 'This will restore stock back to the catalog.'
+          : undefined,
       confirmText: 'Yes, update',
       icon: 'question',
     });
     if (!ok) return;
-    await api.put(`/orders/${id}/status`, { status });
-    load();
+    setSavingStatus(true);
+    try {
+      await api.put(`/orders/${editingOrder.id}/status`, { status: statusDraft });
+      closeEdit();
+      load();
+    } catch (err) {
+      errorAlert('Could not update status', err.response?.data?.message || 'Something went wrong.');
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function handleReturnSave() {
+    const items = Object.entries(returnQtys)
+      .map(([id, qty]) => ({ id: Number(id), quantity: Number(qty) }))
+      .filter((i) => i.quantity > 0);
+    if (items.length === 0) return;
+    const ok = await confirmAction({
+      title: 'Process this return?',
+      text: 'Stock will be restored and the order total will be adjusted.',
+      confirmText: 'Yes, return',
+      icon: 'question',
+    });
+    if (!ok) return;
+    setSavingReturn(true);
+    try {
+      await api.put(`/orders/${editingOrder.id}/return`, { items });
+      closeEdit();
+      load();
+    } catch (err) {
+      errorAlert('Could not process return', err.response?.data?.message || 'Something went wrong.');
+    } finally {
+      setSavingReturn(false);
+    }
   }
 
   if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
@@ -92,7 +150,31 @@ export default function AdminOrders() {
 
       <AdminFilterBar search={search} onSearchChange={setSearch} placeholder="Search by order # or customer..." />
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {pagedOrders.map((order) => (
+          <AdminMobileRow
+            key={order.id}
+            image={null}
+            title={`Order #${order.id}`}
+            subtitle={`${order.customer_name} · ${new Date(order.created_at).toLocaleDateString()}`}
+            meta={
+              <div className="flex flex-col items-end gap-1">
+                <span className="font-bold text-sm text-gray-900 dark:text-gray-100">{formatRs(order.total_amount)}</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STATUS_STYLES[order.status]}`}>
+                  {STATUS_LABELS[order.status]}
+                </span>
+              </div>
+            }
+            onView={() => navigate(`/admin/orders/${order.id}`)}
+            actions={[{ icon: faPen, label: 'Edit', tone: 'edit', onClick: () => navigate(`/admin/orders/${order.id}/edit`) }]}
+          />
+        ))}
+        {filteredOrders.length === 0 && (
+          <p className="p-4 text-gray-500 dark:text-gray-400">No {statusTab} orders found.</p>
+        )}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>
@@ -128,9 +210,12 @@ export default function AdminOrders() {
                       <li key={item.id} className="flex justify-between gap-4 text-xs">
                         <span>
                           <span className="font-bold text-gray-900 dark:text-gray-100">
-                            {item.product_code || '—'}
+                            {item.product_code || '-'}
                           </span>{' '}
                           x{item.quantity}
+                          {item.returned_quantity > 0 && (
+                            <span className="text-orange-500 dark:text-orange-400"> (returned {item.returned_quantity})</span>
+                          )}
                         </span>
                         <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
                           {formatRs(item.price * item.quantity)}
@@ -141,35 +226,19 @@ export default function AdminOrders() {
                 </td>
                 <td className="p-3 font-bold whitespace-nowrap">{formatRs(order.total_amount)}</td>
                 <td className="p-3">
-                  {editingOrderId === order.id ? (
-                    <select
-                      autoFocus
-                      value={order.status}
-                      onChange={(e) => updateStatus(order.id, e.target.value)}
-                      onBlur={() => setEditingOrderId(null)}
-                      className="border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-2 py-1 text-xs capitalize"
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full capitalize ${STATUS_STYLES[order.status]}`}>
-                      {order.status}
-                    </span>
-                  )}
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${STATUS_STYLES[order.status]}`}>
+                    {STATUS_LABELS[order.status]}
+                  </span>
                 </td>
                 <td className="p-3">
-                  {editingOrderId !== order.id && (
-                    <button
-                      onClick={() => setEditingOrderId(order.id)}
-                      aria-label="Edit status"
-                      title="Edit status"
-                      className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-600 dark:text-gray-300"
-                    >
-                      <FontAwesomeIcon icon={faPen} size="xs" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => openEdit(order)}
+                    aria-label="Edit order"
+                    title="Edit order"
+                    className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-600 dark:text-gray-300"
+                  >
+                    <FontAwesomeIcon icon={faPen} size="xs" />
+                  </button>
                 </td>
               </tr>
             ))}
@@ -181,6 +250,22 @@ export default function AdminOrders() {
       </div>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+
+      <Modal open={!!editingOrder} onClose={closeEdit} title={editingOrder ? `Order #${editingOrder.id}` : ''} maxWidth="max-w-xl">
+        {editingOrder && (
+          <OrderStatusPanel
+            order={editingOrder}
+            statusDraft={statusDraft}
+            setStatusDraft={setStatusDraft}
+            onStatusSave={handleStatusSave}
+            savingStatus={savingStatus}
+            returnQtys={returnQtys}
+            setReturnQtys={setReturnQtys}
+            onReturnSave={handleReturnSave}
+            savingReturn={savingReturn}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

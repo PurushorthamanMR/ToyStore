@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen, faTrash, faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
@@ -6,11 +7,13 @@ import Modal from '../../components/Modal';
 import ImageUploadBox from '../../components/ImageUploadBox';
 import ActiveTabs from '../../components/ActiveTabs';
 import Pagination from '../../components/Pagination';
+import AdminMobileRow from '../../components/AdminMobileRow';
 import { confirmAction } from '../../lib/alert';
 
 const PAGE_SIZE = 9;
 
 export default function AdminOffers() {
+  const navigate = useNavigate();
   const [offers, setOffers] = useState([]);
   const [image, setImage] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -121,7 +124,27 @@ export default function AdminOffers() {
 
       <ActiveTabs active={activeTab} onChange={setActiveTab} />
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {pagedOffers.map((offer) => (
+          <AdminMobileRow
+            key={offer.id}
+            image={offer.image}
+            title={`Offer #${offer.id}`}
+            onView={() => navigate(`/admin/offers/${offer.id}`)}
+            actions={
+              activeTab
+                ? [
+                    { icon: faPen, label: 'Edit', tone: 'edit', onClick: () => navigate(`/admin/offers/${offer.id}/edit`) },
+                    { icon: faTrash, label: 'Delete', tone: 'danger', onClick: () => handleDelete(offer.id) },
+                  ]
+                : [{ icon: faRotateRight, label: 'Restore', tone: 'success', onClick: () => handleRestore(offer.id) }]
+            }
+          />
+        ))}
+        {offers.length === 0 && <p className="p-4 text-gray-500 dark:text-gray-400">No offers found.</p>}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>

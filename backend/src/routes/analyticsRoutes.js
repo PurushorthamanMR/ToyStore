@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   getHotCategories,
+  getHotSubcategories,
   getFeaturedProducts,
   getFeaturedCategoriesRanked,
   getBestSelling,
@@ -12,6 +13,7 @@ const { authenticate, authenticateOptional, requireAdmin } = require('../middlew
 const router = express.Router();
 
 router.get('/hot-categories', authenticateOptional, getHotCategories);
+router.get('/hot-subcategories', authenticateOptional, getHotSubcategories);
 router.get('/featured-products', authenticateOptional, getFeaturedProducts);
 router.get('/featured-categories', authenticateOptional, getFeaturedCategoriesRanked);
 router.get('/best-selling', authenticateOptional, getBestSelling);

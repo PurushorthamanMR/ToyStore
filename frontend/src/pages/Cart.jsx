@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import api from '../api/client';
 import Toast from '../components/Toast';
+import Modal from '../components/Modal';
 
 export default function Cart() {
   const { items, updateQuantity, removeFromCart, total, clearCart } = useCart();
@@ -17,6 +18,7 @@ export default function Cart() {
   const navigate = useNavigate();
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showGuestModal, setShowGuestModal] = useState(false);
 
   function showToast(type, message, duration = 4000) {
     setToast({ type, message });
@@ -28,11 +30,25 @@ export default function Cart() {
     showToast('success', `${item.name} removed from cart`, 3000);
   }
 
-  async function handleSendOrderRequest() {
+  function handleSendOrderRequest() {
     if (!user) {
-      navigate('/login');
+      setShowGuestModal(true);
       return;
     }
+    submitOrderRequest();
+  }
+
+  function continueWithLogin() {
+    setShowGuestModal(false);
+    navigate('/login');
+  }
+
+  function continueWithoutLogin() {
+    setShowGuestModal(false);
+    submitOrderRequest();
+  }
+
+  async function submitOrderRequest() {
     setSending(true);
     try {
       const { data } = await api.post('/whatsapp/send', {
@@ -41,8 +57,18 @@ export default function Cart() {
           quantity: i.quantity,
         })),
       });
-      showToast('success', data.message || 'Order sent successfully!');
       clearCart();
+      if (data.whatsapp?.number) {
+        // Navigate the current tab rather than pre-opening a blank one and
+        // redirecting it later - on mobile browsers (notably iOS Safari)
+        // that pattern leaves the new tab stuck on about:blank because the
+        // window handle can't be navigated after the async request resolves.
+        // A same-tab location change isn't subject to popup blocking at all.
+        const href = `https://wa.me/${data.whatsapp.number}?text=${encodeURIComponent(data.whatsapp.text)}`;
+        window.location.href = href;
+      } else {
+        showToast('success', data.message || 'Order placed!');
+      }
     } catch (err) {
       showToast('error', err.response?.data?.message || 'Failed to send order request');
     } finally {
@@ -181,6 +207,28 @@ export default function Cart() {
         </div>,
         document.body
       )}
+
+      <Modal open={showGuestModal} onClose={() => setShowGuestModal(false)} title="Continue as guest?">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          You're not logged in. You can log in to keep track of your orders, or continue without an
+          account - we'll still send your request, but you won't be able to see it under your own
+          order history later.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={continueWithLogin}
+            className="w-full bg-wa-green hover:bg-wa-green-dark text-white font-semibold py-2.5 rounded-md"
+          >
+            Continue with login
+          </button>
+          <button
+            onClick={continueWithoutLogin}
+            className="w-full border border-gray-300 dark:border-neutral-700 text-gray-700 dark:text-gray-300 font-semibold py-2.5 rounded-md hover:bg-gray-50 dark:hover:bg-neutral-800"
+          >
+            Continue without login
+          </button>
+        </div>
+      </Modal>
 
       <Toast toast={toast} />
     </div>

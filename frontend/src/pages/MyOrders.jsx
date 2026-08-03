@@ -47,12 +47,9 @@ export default function MyOrders() {
             className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-xl shadow-sm dark:shadow-none overflow-hidden flex flex-col"
           >
             <div className="p-4 flex items-center justify-between border-b border-gray-100 dark:border-neutral-800">
-              <div>
-                <p className="font-bold text-gray-900 dark:text-gray-100">Order #{order.id}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {new Date(order.created_at).toLocaleString()}
-                </p>
-              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {new Date(order.created_at).toLocaleString()}
+              </p>
               <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[order.status]}`}>
                 {order.status}
               </span>

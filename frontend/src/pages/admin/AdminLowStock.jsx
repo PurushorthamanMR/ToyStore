@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
@@ -6,10 +7,13 @@ import { formatRs } from '../../lib/format';
 import Modal from '../../components/Modal';
 import AdminFilterBar from '../../components/AdminFilterBar';
 import Pagination from '../../components/Pagination';
+import AdminMobileRow from '../../components/AdminMobileRow';
+import RestockForm from './forms/RestockForm';
 
 const PAGE_SIZE = 9;
 
 export default function AdminLowStock() {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -78,25 +82,7 @@ export default function AdminLowStock() {
       <Modal open={!!editingProduct} onClose={closeModal} title="Update Stock">
         <form onSubmit={handleSubmit} className="space-y-3">
           {error && <p className="text-red-600 text-sm">{error}</p>}
-          <p className="font-medium text-gray-900 dark:text-gray-100">{editingProduct?.name}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Current stock: <span className="font-semibold text-gray-900 dark:text-gray-100">{editingProduct?.stock}</span>
-          </p>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Add Stock</label>
-            <input
-              required
-              type="number"
-              min="0"
-              value={stockValue}
-              onChange={(e) => setStockValue(e.target.value)}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Updated stock: <span className="font-semibold text-wa-green-dark dark:text-wa-green">{updatedStock}</span>
-            <span className="text-gray-400 dark:text-gray-500"> ({editingProduct?.stock} + {addedStock})</span>
-          </p>
+          <RestockForm product={editingProduct} stockValue={stockValue} setStockValue={setStockValue} />
           <div className="flex gap-2">
             <button type="submit" className="bg-wa-green hover:bg-wa-green-dark text-white font-semibold px-4 py-2 rounded-md">
               Save
@@ -112,7 +98,34 @@ export default function AdminLowStock() {
         </form>
       </Modal>
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {pagedProducts.map((p) => (
+          <AdminMobileRow
+            key={p.id}
+            image={p.image}
+            title={p.name}
+            subtitle={p.category_name}
+            meta={
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                  p.stock === 0
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                    : 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
+                }`}
+              >
+                {p.stock === 0 ? 'Out of stock' : `${p.stock} left`}
+              </span>
+            }
+            onView={() => navigate(`/admin/products/${p.id}`)}
+            actions={[{ icon: faPen, label: 'Update stock', tone: 'edit', onClick: () => navigate(`/admin/low-stock/${p.id}/edit`) }]}
+          />
+        ))}
+        {filteredProducts.length === 0 && (
+          <p className="p-4 text-gray-500 dark:text-gray-400">No low stock products.</p>
+        )}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>

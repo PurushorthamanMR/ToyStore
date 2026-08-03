@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import api from '../api/client';
+import { clearHomeCache } from '../lib/homeCache';
 
 const AuthContext = createContext(null);
 
@@ -20,6 +21,7 @@ export function AuthProvider({ children }) {
     const store = remember ? localStorage : sessionStorage;
     store.setItem('ccs_token', token);
     store.setItem('ccs_user', JSON.stringify(userData));
+    clearHomeCache();
     setUser(userData);
   }
 
@@ -28,6 +30,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('ccs_user');
     sessionStorage.removeItem('ccs_token');
     sessionStorage.removeItem('ccs_user');
+    clearHomeCache();
     setUser(null);
   }
 

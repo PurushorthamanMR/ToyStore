@@ -1,7 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
-const { sendWhatsAppText } = require('./whatsappController');
+const { buildSellerApplicationMessage } = require('./whatsappController');
+const { isValidEmail } = require('../utils/validators');
+const { getWhatsappNumber } = require('../utils/settings');
 
 function getSuperAdminCredentials() {
   return {
@@ -71,15 +73,24 @@ async function register(req, res) {
     if (!full_name || !whatsapp_number || !password) {
       return res.status(400).json({ message: 'Full name, WhatsApp number and password are required' });
     }
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
+    }
 
     const [existing] = await pool.query('SELECT id FROM customers WHERE whatsapp_number = ?', [whatsapp_number]);
     if (existing.length > 0) {
       return res.status(409).json({ message: 'An account with this WhatsApp number already exists' });
     }
+    if (email) {
+      const [existingEmail] = await pool.query('SELECT id FROM customers WHERE email = ?', [email]);
+      if (existingEmail.length > 0) {
+        return res.status(409).json({ message: 'An account with this email already exists' });
+      }
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     const [result] = await pool.query(
-      'INSERT INTO customers (full_name, whatsapp_number, email, password) VALUES (?, ?, ?, ?)',
+      'INSERT INTO customers (name, whatsapp_number, email, password) VALUES (?, ?, ?, ?)',
       [full_name, whatsapp_number, email || null, hashed]
     );
 
@@ -101,14 +112,21 @@ async function register(req, res) {
 
 async function applySeller(req, res) {
   try {
-    const { full_name, email, mobile, password } = req.body;
-    if (!full_name || !email || !mobile || !password) {
-      return res.status(400).json({ message: 'Full name, email, mobile and password are required' });
+    const { full_name, email, mobile, password, shop_name, city } = req.body;
+    if (!full_name || !email || !mobile || !password || !shop_name || !city) {
+      return res.status(400).json({ message: 'Full name, email, mobile, password, shop name and city are required' });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
     }
 
     const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(409).json({ message: 'An account with this email already exists' });
+    }
+    const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone = ?', [mobile]);
+    if (existingPhone.length > 0) {
+      return res.status(409).json({ message: 'An account with this mobile number already exists' });
     }
 
     const [[sellerRole]] = await pool.query('SELECT id FROM user_roles WHERE name = ?', ['Seller']);
@@ -118,26 +136,19 @@ async function applySeller(req, res) {
 
     const hashed = await bcrypt.hash(password, 10);
     await pool.query(
-      'INSERT INTO users (name, email, password, phone, role_id, status) VALUES (?, ?, ?, ?, ?, ?)',
-      [full_name, email, hashed, mobile, sellerRole.id, 'pending']
+      'INSERT INTO users (name, email, password, phone, shop_name, city, role_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [full_name, email, hashed, mobile, shop_name, city, sellerRole.id, 'pending']
     );
 
-    const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
-    if (adminNumber) {
-      const message = [
-        'New Seller application:',
-        '',
-        `Name: ${full_name}`,
-        `Email: ${email}`,
-        `Mobile: ${mobile}`,
-        '',
-        'Please review and approve/reject in the admin panel.',
-      ].join('\n');
-      sendWhatsAppText(adminNumber, message).catch((err) => console.error('[whatsapp] seller application notify failed:', err));
-    }
+    // Same pattern as order requests: the applicant opens WhatsApp on their
+    // own device with the message pre-filled, instead of a server-side bot
+    // send (which is unreliable - see whatsapp service ban risk).
+    const adminNumber = await getWhatsappNumber(pool);
+    const message = buildSellerApplicationMessage(full_name, email, mobile);
 
     res.status(201).json({
       message: 'Application sent to admin. After verification you will get a message, then you can use your Seller account.',
+      whatsapp: adminNumber ? { number: adminNumber, text: message } : null,
     });
   } catch (err) {
     console.error(err);
@@ -209,9 +220,12 @@ async function login(req, res) {
       if (!match) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
+      if (!dbCustomer.is_active) {
+        return res.status(403).json({ message: 'Your account has been deactivated. Please contact the admin.' });
+      }
       const user = {
         id: dbCustomer.id,
-        name: dbCustomer.full_name,
+        name: dbCustomer.name,
         email: dbCustomer.email,
         phone: dbCustomer.whatsapp_number,
         role: 'Customer',
@@ -236,7 +250,7 @@ async function me(req, res) {
     }
     if (req.user.type === 'customer') {
       const [rows] = await pool.query(
-        'SELECT id, full_name AS name, email, whatsapp_number AS phone FROM customers WHERE id = ?',
+        'SELECT id, name, email, whatsapp_number AS phone FROM customers WHERE id = ?',
         [req.user.id]
       );
       if (rows.length === 0) return res.status(404).json({ message: 'Account not found' });
@@ -244,7 +258,7 @@ async function me(req, res) {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.phone, u.address, r.name AS role
+      `SELECT u.id, u.name, u.email, u.phone, u.address, u.shop_name, u.city, r.name AS role
        FROM users u JOIN user_roles r ON r.id = u.role_id WHERE u.id = ?`,
       [req.user.id]
     );
@@ -262,13 +276,13 @@ async function updateProfile(req, res) {
       return res.status(400).json({ message: 'Profile editing is not available for the SuperAdmin account' });
     }
 
-    const { name, email, phone, address, password } = req.body;
+    const { name, email, phone, address, shop_name, city, password } = req.body;
     const hashed = password ? await bcrypt.hash(password, 10) : null;
 
     if (req.user.type === 'customer') {
       const fields = [];
       const values = [];
-      if (name !== undefined) { fields.push('full_name = ?'); values.push(name); }
+      if (name !== undefined) { fields.push('name = ?'); values.push(name); }
       if (phone !== undefined) { fields.push('whatsapp_number = ?'); values.push(phone); }
       if (email !== undefined) { fields.push('email = ?'); values.push(email || null); }
       if (hashed) { fields.push('password = ?'); values.push(hashed); }
@@ -283,6 +297,8 @@ async function updateProfile(req, res) {
     if (name !== undefined) { fields.push('name = ?'); values.push(name); }
     if (phone !== undefined) { fields.push('phone = ?'); values.push(phone || null); }
     if (address !== undefined) { fields.push('address = ?'); values.push(address || null); }
+    if (shop_name !== undefined) { fields.push('shop_name = ?'); values.push(shop_name || null); }
+    if (city !== undefined) { fields.push('city = ?'); values.push(city || null); }
     if (email !== undefined) { fields.push('email = ?'); values.push(email); }
     if (hashed) { fields.push('password = ?'); values.push(hashed); }
     if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update' });

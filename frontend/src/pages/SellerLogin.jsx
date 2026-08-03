@@ -1,20 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faStore, faChartLine, faBoxesStacked, faCircleDollarToSlot } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import PasswordInput from '../components/PasswordInput';
 import api from '../api/client';
 import { infoAlert } from '../lib/alert';
-
-const SELLER_PERKS = [
-  { icon: faBoxesStacked, text: 'Manage your listings' },
-  { icon: faChartLine, text: 'Track sales in real time' },
-  { icon: faCircleDollarToSlot, text: 'Get paid on time' },
-];
+import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
 
 export default function SellerLogin() {
   const { signIn } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -44,9 +39,10 @@ export default function SellerLogin() {
     } catch {
       number = null;
     }
+    const storeName = settings?.store_name || 'City Cycle Stores Toys';
     const waHref = number
       ? `https://wa.me/${number}?text=${encodeURIComponent(
-          'Hi, I forgot my password for my City Cycle Stores seller account and need help resetting it.'
+          `Hi, I forgot my password for my ${storeName} seller account and need help resetting it.`
         )}`
       : null;
     infoAlert(
@@ -58,90 +54,68 @@ export default function SellerLogin() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-10 md:py-16">
-      <div className="rounded-2xl overflow-hidden shadow-lg dark:shadow-none border border-gray-200 dark:border-neutral-800">
-        <div className="bg-gradient-to-r from-neutral-900 to-wa-teal text-white text-center px-6 sm:px-10 py-8">
-          <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/10 mb-3">
-            <FontAwesomeIcon icon={faStore} className="text-xl" />
-          </span>
-          <h1 className="text-xl font-bold">Seller Portal</h1>
-          <p className="text-sm text-white/70 mt-1">Sign in to manage your listings, orders and payouts.</p>
-          <div className="hidden sm:flex justify-center gap-8 mt-6 pt-6 border-t border-white/10">
-            {SELLER_PERKS.map((perk) => (
-              <div key={perk.text} className="flex flex-col items-center gap-2 max-w-[7rem]">
-                <FontAwesomeIcon icon={perk.icon} className="text-lg text-white/80" />
-                <span className="text-xs text-white/70 text-center leading-tight">{perk.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-neutral-900 p-6 sm:p-10">
-          {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                WhatsApp Number
-              </label>
-              <input
-                type="text"
-                autoComplete="username"
-                required
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Password</label>
-              <PasswordInput
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-              />
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 dark:border-neutral-600 text-wa-teal focus:ring-wa-teal"
-                />
-                Remember me
-              </label>
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                className="text-wa-teal-light dark:text-wa-green font-semibold hover:underline"
-              >
-                Forgot password?
-              </button>
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-wa-teal hover:bg-wa-teal-light disabled:bg-gray-300 dark:disabled:bg-neutral-700 text-white font-semibold py-2.5 rounded-md"
-            >
-              {loading ? 'Logging in...' : 'Login to Seller Portal'}
-            </button>
-          </form>
-          <p className="text-sm text-center mt-4 text-gray-700 dark:text-gray-300">
-            Not a seller yet?{' '}
-            <Link to="/apply-seller" className="text-wa-teal-light dark:text-wa-green font-semibold hover:underline">
-              Apply as a Seller
-            </Link>
-          </p>
-          <p className="text-sm text-center mt-2 text-gray-700 dark:text-gray-300">
-            Shopping instead?{' '}
-            <Link to="/login" className="text-wa-teal-light dark:text-wa-green font-semibold hover:underline">
-              Customer Login
-            </Link>
-          </p>
-        </div>
+    <>
+      <div className="hidden md:block">
+        <h2 className="text-xl font-bold mb-1 text-gray-900 dark:text-gray-100">Seller Login</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Sign in to manage your listings and orders.</p>
       </div>
-    </div>
+      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      <form onSubmit={handleSubmit} className="space-y-5 md:space-y-4">
+        <div>
+          <label className={authLabelClass}>WhatsApp Number</label>
+          <input
+            type="text"
+            autoComplete="username"
+            required
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            className={authInputClass}
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>Password</label>
+          <PasswordInput
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={authInputClass}
+          />
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 dark:border-neutral-600 text-wa-green focus:ring-wa-green"
+            />
+            Remember me
+          </label>
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            className="text-wa-green-dark dark:text-wa-green font-semibold hover:underline"
+          >
+            Forgot password?
+          </button>
+        </div>
+        <button type="submit" disabled={loading} className={`${authButtonClass} mt-2`}>
+          {loading ? 'Logging in...' : 'Login to Seller Portal'}
+        </button>
+      </form>
+      <p className="text-sm text-center mt-6 md:mt-4 text-gray-500 dark:text-gray-400">
+        Not a seller yet?{' '}
+        <Link to="/apply-seller" className="text-wa-green-dark dark:text-wa-green font-bold hover:underline">
+          Apply as a Seller
+        </Link>
+      </p>
+      <p className="text-sm text-center mt-2 text-gray-500 dark:text-gray-400">
+        Shopping instead?{' '}
+        <Link to="/login" className="text-wa-green-dark dark:text-wa-green font-bold hover:underline">
+          Customer Login
+        </Link>
+      </p>
+    </>
   );
 }

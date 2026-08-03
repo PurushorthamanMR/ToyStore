@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen, faTrash, faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
 import Modal from '../../components/Modal';
-import ImageUploadBoxMulti from '../../components/ImageUploadBoxMulti';
 import ActiveTabs from '../../components/ActiveTabs';
 import Pagination from '../../components/Pagination';
+import AdminMobileRow from '../../components/AdminMobileRow';
 import { confirmAction } from '../../lib/alert';
+import BlogForm from './forms/BlogForm';
 
 const PAGE_SIZE = 9;
 
 const emptyForm = { subject: '', message: '', images: [] };
 
 export default function AdminBlogs() {
+  const navigate = useNavigate();
   const [blogs, setBlogs] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
@@ -102,28 +105,7 @@ export default function AdminBlogs() {
       <Modal open={modalOpen} onClose={closeModal} title={editingId ? 'Edit Blog' : 'Add Blog'}>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3">
           {error && <p className="text-red-600 text-sm">{error}</p>}
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Subject</label>
-            <input
-              type="text"
-              value={form.subject}
-              onChange={(e) => setForm({ ...form, subject: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded-lg px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Message</label>
-            <textarea
-              value={form.message}
-              onChange={(e) => setForm({ ...form, message: e.target.value })}
-              rows={5}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded-lg px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Images</label>
-            <ImageUploadBoxMulti value={form.images} onChange={(images) => setForm({ ...form, images })} />
-          </div>
+          <BlogForm form={form} setForm={setForm} />
           <div className="flex gap-2">
             <button type="submit" className="bg-wa-green hover:bg-wa-green-dark text-white font-semibold px-4 py-2 rounded-md">
               {editingId ? 'Update Blog' : 'Add Blog'}
@@ -141,7 +123,28 @@ export default function AdminBlogs() {
 
       <ActiveTabs active={activeTab} onChange={setActiveTab} />
 
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
+      <div className="xl:hidden bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none px-3">
+        {pagedBlogs.map((blog) => (
+          <AdminMobileRow
+            key={blog.id}
+            image={(blog.images || [])[0]}
+            title={blog.subject}
+            subtitle={blog.message}
+            onView={() => navigate(`/admin/blogs/${blog.id}`)}
+            actions={
+              activeTab
+                ? [
+                    { icon: faPen, label: 'Edit', tone: 'edit', onClick: () => navigate(`/admin/blogs/${blog.id}/edit`) },
+                    { icon: faTrash, label: 'Delete', tone: 'danger', onClick: () => handleDelete(blog.id) },
+                  ]
+                : [{ icon: faRotateRight, label: 'Restore', tone: 'success', onClick: () => handleRestore(blog.id) }]
+            }
+          />
+        ))}
+        {blogs.length === 0 && <p className="p-4 text-gray-500 dark:text-gray-400">No blogs found.</p>}
+      </div>
+
+      <div className="hidden xl:block bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-neutral-800 text-left text-gray-700 dark:text-gray-300">
             <tr>

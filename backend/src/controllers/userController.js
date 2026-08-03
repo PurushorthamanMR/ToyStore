@@ -1,17 +1,49 @@
 const pool = require('../config/db');
+const { isValidEmail } = require('../utils/validators');
 
-const ASSIGNABLE_ROLES = ['Customer', 'Seller', 'Admin'];
+const ASSIGNABLE_ROLES = ['Seller', 'Admin'];
 
 const VALID_STATUSES = ['pending', 'approved', 'rejected'];
+
+async function checkUserField(req, res) {
+  try {
+    const { field, value, excludeId } = req.query;
+    if (!['email', 'phone'].includes(field) || !value || !value.trim()) {
+      return res.json({ available: true });
+    }
+    const params = [value.trim()];
+    let sql = `SELECT id FROM users WHERE ${field} = ?`;
+    if (excludeId) {
+      sql += ' AND id != ?';
+      params.push(excludeId);
+    }
+    const [rows] = await pool.query(sql, params);
+    res.json({ available: rows.length === 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to check availability' });
+  }
+}
+
+async function fieldInUse(field, value, excludeId) {
+  const params = [value.trim()];
+  let sql = `SELECT id FROM users WHERE ${field} = ?`;
+  if (excludeId) {
+    sql += ' AND id != ?';
+    params.push(excludeId);
+  }
+  const [rows] = await pool.query(sql, params);
+  return rows.length > 0;
+}
 
 async function listUsers(req, res) {
   try {
     const { status } = req.query;
     const filterStatus = VALID_STATUSES.includes(status) ? status : 'approved';
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.phone, r.name AS role, u.status, u.is_active, u.created_at
+      `SELECT u.id, u.name, u.email, u.phone, u.shop_name, u.city, r.name AS role, u.status, u.is_active, u.created_at
        FROM users u JOIN user_roles r ON r.id = u.role_id
-       WHERE u.status = ? AND r.name IN ('SuperAdmin', 'Admin', 'Seller')
+       WHERE u.status = ? AND r.name IN ('Admin', 'Seller')
        ORDER BY u.created_at DESC`,
       [filterStatus]
     );
@@ -44,12 +76,23 @@ async function updateUserRole(req, res) {
 async function updateUser(req, res) {
   try {
     const { id } = req.params;
-    const { name, email, phone } = req.body;
+    const { name, email, phone, shop_name, city } = req.body;
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
+    }
+    if (email && (await fieldInUse('email', email, id))) {
+      return res.status(409).json({ message: 'That email is already in use' });
+    }
+    if (phone && (await fieldInUse('phone', phone, id))) {
+      return res.status(409).json({ message: 'That phone number is already in use' });
+    }
     const fields = [];
     const values = [];
     if (name !== undefined) { fields.push('name = ?'); values.push(name); }
     if (email !== undefined) { fields.push('email = ?'); values.push(email); }
     if (phone !== undefined) { fields.push('phone = ?'); values.push(phone || null); }
+    if (shop_name !== undefined) { fields.push('shop_name = ?'); values.push(shop_name || null); }
+    if (city !== undefined) { fields.push('city = ?'); values.push(city || null); }
     if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update' });
     values.push(id);
     await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
@@ -91,4 +134,5 @@ module.exports = {
   updateUser,
   approveUser,
   rejectUser,
+  checkUserField,
 };

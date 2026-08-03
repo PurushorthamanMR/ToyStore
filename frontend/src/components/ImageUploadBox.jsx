@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCamera } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
 
+const MAX_FILE_SIZE_MB = 10;
+
 export default function ImageUploadBox({ value, onChange }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -10,6 +12,11 @@ export default function ImageUploadBox({ value, onChange }) {
   async function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      setError(`Image is too large. Maximum allowed size is ${MAX_FILE_SIZE_MB}MB.`);
+      e.target.value = '';
+      return;
+    }
     setUploading(true);
     setError('');
     try {
@@ -38,6 +45,7 @@ export default function ImageUploadBox({ value, onChange }) {
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {uploading ? 'Uploading...' : 'Click to upload image'}
         </span>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">Max {MAX_FILE_SIZE_MB}MB</span>
         <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
       </label>
       {error && <p className="text-red-600 text-xs mt-1">{error}</p>}

@@ -49,12 +49,14 @@ async function createOrderRecord(connection, requester, items, options = {}) {
   );
   const orderId = orderResult.insertId;
 
+  // Stock is not reduced here - an order only reserves stock once an admin
+  // approves it (status -> successful), so a pile of pending requests can't
+  // starve the catalog before anyone has actually confirmed them.
   for (const item of lineItems) {
     await connection.query(
       `INSERT INTO order_items (order_id, product_id, product_name, product_code, price, quantity) VALUES (?, ?, ?, ?, ?, ?)`,
       [orderId, item.product_id, item.product_name, item.product_code, item.price, item.quantity]
     );
-    await connection.query(`UPDATE products SET stock = stock - ? WHERE id = ?`, [item.quantity, item.product_id]);
   }
 
   return { orderId, total, lineItems };
@@ -118,7 +120,7 @@ async function listAllOrders(req, res) {
   try {
     const [orders] = await pool.query(
       `SELECT o.*,
-              COALESCE(u.name, c.full_name) AS customer_name,
+              COALESCE(u.name, c.name) AS customer_name,
               COALESCE(u.email, c.email) AS customer_email,
               COALESCE(u.phone, c.whatsapp_number) AS customer_phone,
               CASE WHEN o.customer_id IS NOT NULL THEN 'Customer' ELSE r.name END AS orderer_role
@@ -140,17 +142,128 @@ async function listAllOrders(req, res) {
 }
 
 async function updateOrderStatus(req, res) {
+  const { id } = req.params;
+  const { status } = req.body;
+  const valid = ['pending', 'successful', 'return', 'cancelled'];
+  if (!valid.includes(status)) return res.status(400).json({ message: 'Invalid status' });
+
+  const connection = await pool.getConnection();
   try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const valid = ['pending', 'successful', 'return', 'cancelled'];
-    if (!valid.includes(status)) return res.status(400).json({ message: 'Invalid status' });
-    await pool.query('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
+    await connection.beginTransaction();
+
+    const [[order]] = await connection.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [id]);
+    if (!order) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const [items] = await connection.query('SELECT * FROM order_items WHERE order_id = ?', [id]);
+    let totalAmount = Number(order.total_amount);
+
+    if (status === 'successful' && order.status !== 'successful') {
+      // First approval: this is the only point stock actually leaves the
+      // catalog, so re-check availability now (it may have moved since the
+      // request was placed).
+      for (const item of items) {
+        if (!item.product_id) continue;
+        const [[product]] = await connection.query('SELECT stock, name FROM products WHERE id = ? FOR UPDATE', [item.product_id]);
+        if (!product || product.stock < item.quantity) {
+          await connection.rollback();
+          return res.status(400).json({ message: `Not enough stock for ${item.product_name} to approve this order` });
+        }
+      }
+      for (const item of items) {
+        if (!item.product_id) continue;
+        await connection.query('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.product_id]);
+      }
+    } else if (order.status === 'successful' && status !== 'successful') {
+      // Leaving 'successful' (return/cancelled) hands back whatever hasn't
+      // already been returned piecemeal.
+      for (const item of items) {
+        const outstanding = item.quantity - item.returned_quantity;
+        if (outstanding > 0 && item.product_id) {
+          await connection.query('UPDATE products SET stock = stock + ? WHERE id = ?', [outstanding, item.product_id]);
+        }
+      }
+      if (status === 'return') {
+        for (const item of items) {
+          await connection.query('UPDATE order_items SET returned_quantity = quantity WHERE id = ?', [item.id]);
+        }
+        totalAmount = 0;
+      }
+    }
+
+    await connection.query('UPDATE orders SET status = ?, total_amount = ? WHERE id = ?', [status, totalAmount, id]);
+    await connection.commit();
     res.json({ message: 'Order status updated' });
   } catch (err) {
+    await connection.rollback();
     console.error(err);
     res.status(500).json({ message: 'Failed to update order status' });
+  } finally {
+    connection.release();
   }
 }
 
-module.exports = { placeOrder, listMyOrders, listAllOrders, updateOrderStatus, createOrderRecord };
+async function processReturn(req, res) {
+  const { id } = req.params;
+  const { items } = req.body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: 'No return quantities provided' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [[order]] = await connection.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [id]);
+    if (!order) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    if (order.status !== 'successful') {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Only approved orders can be returned' });
+    }
+
+    const [orderItems] = await connection.query('SELECT * FROM order_items WHERE order_id = ? FOR UPDATE', [id]);
+    const itemMap = new Map(orderItems.map((oi) => [oi.id, oi]));
+
+    for (const req_item of items) {
+      const qty = Number(req_item.quantity) || 0;
+      if (qty <= 0) continue;
+      const item = itemMap.get(Number(req_item.id));
+      if (!item) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Invalid order item' });
+      }
+      const remaining = item.quantity - item.returned_quantity;
+      if (qty > remaining) {
+        await connection.rollback();
+        return res.status(400).json({ message: `Cannot return more than ${remaining} of ${item.product_name}` });
+      }
+
+      await connection.query('UPDATE order_items SET returned_quantity = returned_quantity + ? WHERE id = ?', [qty, item.id]);
+      if (item.product_id) {
+        await connection.query('UPDATE products SET stock = stock + ? WHERE id = ?', [qty, item.product_id]);
+      }
+      item.returned_quantity += qty;
+    }
+
+    const remainingTotal = orderItems.reduce((sum, item) => sum + Number(item.price) * (item.quantity - item.returned_quantity), 0);
+    const fullyReturned = orderItems.every((item) => item.returned_quantity >= item.quantity);
+    const newStatus = fullyReturned ? 'return' : order.status;
+
+    await connection.query('UPDATE orders SET total_amount = ?, status = ? WHERE id = ?', [remainingTotal, newStatus, id]);
+    await connection.commit();
+    res.json({ message: 'Return processed', total_amount: remainingTotal, status: newStatus });
+  } catch (err) {
+    await connection.rollback();
+    console.error(err);
+    res.status(500).json({ message: 'Failed to process return' });
+  } finally {
+    connection.release();
+  }
+}
+
+module.exports = { placeOrder, listMyOrders, listAllOrders, updateOrderStatus, processReturn, createOrderRecord };

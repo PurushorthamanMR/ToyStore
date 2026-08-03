@@ -4,21 +4,57 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../context/AuthContext';
 import PasswordInput from '../components/PasswordInput';
+import FieldStatus from '../components/FieldStatus';
+import { useDuplicateCheck } from '../lib/useDuplicateCheck';
+import { isValidEmail } from '../lib/validators';
+import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
 
 export default function ApplySeller() {
   const { applySeller } = useAuth();
-  const [form, setForm] = useState({ full_name: '', email: '', mobile: '', password: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', mobile: '', password: '', shop_name: '', city: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const emailInvalid = !!form.email && !isValidEmail(form.email);
+  const emailStatus = useDuplicateCheck('/users/check', form.email, {
+    extraParams: { field: 'email' },
+    skip: !form.email || emailInvalid,
+  });
+  const mobileStatus = useDuplicateCheck('/users/check', form.mobile, {
+    extraParams: { field: 'phone' },
+    skip: !form.mobile,
+  });
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (emailInvalid) {
+      setError('Enter a valid email address');
+      return;
+    }
+    if (emailStatus === 'duplicate') {
+      setError('An account with this email already exists');
+      return;
+    }
+    if (mobileStatus === 'duplicate') {
+      setError('An account with this mobile number already exists');
+      return;
+    }
     setLoading(true);
     try {
-      await applySeller(form);
-      setSubmitted(true);
+      const data = await applySeller(form);
+      if (data.whatsapp?.number) {
+        // Navigate the current tab rather than pre-opening a blank one and
+        // redirecting it later - on mobile browsers (notably iOS Safari)
+        // that pattern leaves the new tab stuck on about:blank because the
+        // window handle can't be navigated after the async request resolves.
+        // A same-tab location change isn't subject to popup blocking at all.
+        const href = `https://wa.me/${data.whatsapp.number}?text=${encodeURIComponent(data.whatsapp.text)}`;
+        window.location.href = href;
+      } else {
+        setSubmitted(true);
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to submit application');
     } finally {
@@ -28,83 +64,106 @@ export default function ApplySeller() {
 
   if (submitted) {
     return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center">
-        <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none p-6">
-          <div className="text-4xl mb-3 text-wa-green"><FontAwesomeIcon icon={faCircleCheck} /></div>
-          <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">Application sent to admin</h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            After verification you will get a message, then you can use your Seller account.
-          </p>
-          <Link to="/" className="inline-block mt-4 text-wa-green-dark dark:text-wa-green font-semibold hover:underline">
-            Back to Home
-          </Link>
-        </div>
+      <div className="text-center">
+        <div className="text-4xl mb-3 text-wa-green"><FontAwesomeIcon icon={faCircleCheck} /></div>
+        <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">Application sent to admin</h2>
+        <p className="text-gray-600 dark:text-gray-400">
+          After verification you will get a message, then you can use your Seller account.
+        </p>
+        <Link to="/" className="inline-block mt-4 text-wa-green-dark dark:text-wa-green font-semibold hover:underline">
+          Back to Home
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow dark:shadow-none p-6">
-        <h2 className="text-xl font-bold mb-2 text-center text-gray-900 dark:text-gray-100">Apply as a Seller</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
+    <>
+      <div className="hidden md:block">
+        <h2 className="text-xl font-bold mb-1 text-gray-900 dark:text-gray-100">Apply as a Seller</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
           Submit your details and our admin will review your application.
         </p>
-        {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Full Name</label>
-            <input
-              required
-              value={form.full_name}
-              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Email</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Mobile</label>
-            <input
-              required
-              placeholder="e.g. 94771234567"
-              value={form.mobile}
-              onChange={(e) => setForm({ ...form, mobile: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Password</label>
-            <PasswordInput
-              required
-              minLength={6}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full border border-gray-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 rounded px-3 py-2"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-wa-green hover:bg-wa-green-dark disabled:bg-gray-300 dark:disabled:bg-neutral-700 text-white font-semibold py-2.5 rounded-md"
-          >
-            {loading ? 'Submitting...' : 'Apply'}
-          </button>
-        </form>
-        <p className="text-sm text-center mt-4 text-gray-700 dark:text-gray-300">
-          <Link to="/register" className="text-wa-green-dark dark:text-wa-green font-semibold hover:underline">
-            Register as a Customer instead
-          </Link>
-        </p>
       </div>
-    </div>
+      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      <form onSubmit={handleSubmit} className="space-y-5 md:space-y-4">
+        <div>
+          <label className={authLabelClass}>Full Name</label>
+          <input
+            required
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            className={authInputClass}
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>Email</label>
+          <input
+            type="email"
+            required
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className={authInputClass}
+          />
+          <FieldStatus
+            status={emailStatus}
+            duplicateMessage="An account with this email already exists"
+            invalid={emailInvalid}
+            invalidMessage="Enter a valid email address"
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>Mobile</label>
+          <input
+            required
+            placeholder="e.g. 94771234567"
+            value={form.mobile}
+            onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+            className={authInputClass}
+          />
+          <FieldStatus status={mobileStatus} duplicateMessage="An account with this mobile number already exists" />
+        </div>
+        <div>
+          <label className={authLabelClass}>Shop Name</label>
+          <input
+            required
+            value={form.shop_name}
+            onChange={(e) => setForm({ ...form, shop_name: e.target.value })}
+            className={authInputClass}
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>City</label>
+          <input
+            required
+            value={form.city}
+            onChange={(e) => setForm({ ...form, city: e.target.value })}
+            className={authInputClass}
+          />
+        </div>
+        <div>
+          <label className={authLabelClass}>Password</label>
+          <PasswordInput
+            required
+            minLength={6}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            className={authInputClass}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading || emailInvalid || emailStatus === 'duplicate' || mobileStatus === 'duplicate'}
+          className={`${authButtonClass} mt-2`}
+        >
+          {loading ? 'Submitting...' : 'Apply'}
+        </button>
+      </form>
+      <p className="text-sm text-center mt-6 md:mt-4 text-gray-500 dark:text-gray-400">
+        <Link to="/register" className="text-wa-green-dark dark:text-wa-green font-bold hover:underline">
+          Register as a Customer instead
+        </Link>
+      </p>
+    </>
   );
 }
