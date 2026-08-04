@@ -5,9 +5,11 @@ import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Cart
 import api from '../../api/client';
 import { formatRs } from '../../lib/format';
 
+// "successful" tracks the site's configured accent color; the rest are fixed
+// semantic colors (warning/danger) that shouldn't shift with the theme.
 const STATUS_COLORS = {
   pending: '#eab308',
-  successful: '#25D366',
+  successful: 'var(--color-wa-green)',
   return: '#f97316',
   cancelled: '#ef4444',
 };
@@ -101,7 +103,7 @@ export default function AdminDashboard() {
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip formatter={(v) => formatRs(v)} />
-                <Line type="monotone" dataKey="revenue" stroke="#25D366" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="revenue" stroke="var(--color-wa-green)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -114,7 +116,7 @@ export default function AdminDashboard() {
                   <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="sold" fill="#25D366" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="sold" fill="var(--color-wa-green)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -126,7 +128,7 @@ export default function AdminDashboard() {
                   <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="sold" fill="#128C7E" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="sold" fill="var(--color-wa-teal-light)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -211,7 +213,7 @@ export default function AdminDashboard() {
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip formatter={(v) => formatRs(v)} />
-                <Line type="monotone" dataKey="cost" stroke="#25D366" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="cost" stroke="var(--color-wa-green)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -224,7 +226,7 @@ export default function AdminDashboard() {
                   <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="sold" fill="#25D366" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="sold" fill="var(--color-wa-green)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
