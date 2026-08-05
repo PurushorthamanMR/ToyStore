@@ -1,5 +1,5 @@
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -20,9 +20,12 @@ import {
   faHouse,
   faRightFromBracket,
   faGear,
+  faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
+import CustomScrollbar from '../../components/CustomScrollbar';
+import { SETTINGS_SECTIONS } from './AdminSettings';
 
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
@@ -78,13 +81,14 @@ function buildSections({ pendingCount, lowStockCount, pendingUsersCount, canMana
             items: [
               { to: '/admin/customers', label: 'Customers', icon: faAddressBook },
               { to: '/admin/users', label: 'Users', icon: faUsers, badge: pendingUsersCount },
-              { to: '/admin/settings', label: 'Settings', icon: faGear },
             ],
           },
         ]
       : []),
   ];
 }
+
+const SETTINGS_ITEM = { to: '/admin/settings', label: 'Settings', icon: faGear, children: SETTINGS_SECTIONS };
 
 function SidebarLink({ to, label, icon, badge, onClick }) {
   return (
@@ -108,16 +112,67 @@ function SidebarLink({ to, label, icon, badge, onClick }) {
   );
 }
 
+// A nav item that expands in place to show its own sub-pages as a nested
+// list (currently just Settings) instead of linking straight to the page -
+// lets the mobile hamburger drawer jump directly to a settings tab.
+function SidebarExpandableLink({ to, label, icon, children, onClick }) {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const onParentPage = location.pathname === to;
+  const [open, setOpen] = useState(onParentPage);
+
+  useEffect(() => {
+    if (onParentPage) setOpen(true);
+  }, [onParentPage]);
+
+  const activeTab = onParentPage ? searchParams.get('tab') || 'general' : null;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+          onParentPage ? 'bg-white/20' : 'hover:bg-white/10'
+        }`}
+      >
+        <FontAwesomeIcon icon={icon} className="w-4 shrink-0" />
+        <span className="truncate flex-1 text-left">{label}</span>
+        <FontAwesomeIcon icon={faChevronDown} className={`text-xs transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-1 ml-4 space-y-0.5 border-l border-white/10 pl-3">
+          {children.map((child) => (
+            <Link
+              key={child.key}
+              to={`${to}?tab=${child.key}`}
+              onClick={onClick}
+              className={`block px-3 py-2 rounded-md text-sm truncate transition-colors ${
+                activeTab === child.key ? 'bg-white/20 font-medium' : 'text-white/80 hover:bg-white/10'
+              }`}
+            >
+              {child.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminSidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isDesktop = useIsDesktop();
+  const navScrollRef = useRef(null);
+  const settingsAnchorRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const canManageUsers = ['Admin', 'SuperAdmin'].includes(user?.role);
+  const onSettingsPage = location.pathname === '/admin/settings';
 
   useEffect(() => {
     api.get('/orders').then((res) => {
@@ -132,6 +187,18 @@ export default function AdminSidebar() {
       }).catch(() => {});
     }
   }, [location.pathname, canManageUsers]);
+
+  // Settings lives at the bottom of the drawer — when opening the hamburger
+  // while already on a settings tab, scroll down so the active sub-nav is visible.
+  useEffect(() => {
+    if (!menuOpen || !onSettingsPage) return;
+    const t = window.setTimeout(() => {
+      const container = navScrollRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+      settingsAnchorRef.current?.scrollIntoView({ block: 'nearest' });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [menuOpen, onSettingsPage]);
 
   function handleLogout() {
     logout();
@@ -159,9 +226,13 @@ export default function AdminSidebar() {
               </p>
             )}
             <div className="space-y-1">
-              {section.items.map((item) => (
-                <SidebarLink key={item.to} {...item} onClick={onLinkClick} />
-              ))}
+              {section.items.map((item) =>
+                item.children ? (
+                  <SidebarExpandableLink key={item.to} {...item} onClick={onLinkClick} />
+                ) : (
+                  <SidebarLink key={item.to} {...item} onClick={onLinkClick} />
+                )
+              )}
             </div>
           </div>
         ))}
@@ -172,6 +243,11 @@ export default function AdminSidebar() {
   function footerActions(onLinkClick) {
     return (
       <div className="px-3 py-4 space-y-1 border-t border-white/10 shrink-0">
+        {canManageUsers && (
+          <div ref={settingsAnchorRef}>
+            <SidebarExpandableLink {...SETTINGS_ITEM} onClick={onLinkClick} />
+          </div>
+        )}
         <button
           onClick={() => {
             onLinkClick?.();
@@ -197,8 +273,13 @@ export default function AdminSidebar() {
     return (
       <aside className="flex flex-col w-64 shrink-0 h-screen sticky top-0 bg-wa-teal dark:bg-black text-white dark:border-r dark:border-wa-green/30">
         <div className="px-4 py-5 border-b border-white/10 shrink-0">{brand}</div>
-        <div className="sidebar-scroll flex-1 overflow-y-auto">{navContent()}</div>
-        {footerActions()}
+        <div className="relative flex-1 min-h-0">
+          <div ref={navScrollRef} className="scrollbar-none h-full overflow-y-auto flex flex-col">
+            <div className="flex-1">{navContent()}</div>
+            {footerActions()}
+          </div>
+          <CustomScrollbar containerRef={navScrollRef} thumbClassName="bg-white/25 hover:bg-white/40" />
+        </div>
       </aside>
     );
   }
@@ -251,8 +332,13 @@ export default function AdminSidebar() {
                 </motion.button>
               </div>
               <p className="px-4 pt-3 pb-1 text-xs opacity-70 shrink-0">{user?.name} · {user?.role}</p>
-              <div className="sidebar-scroll flex-1 overflow-y-auto">{navContent(() => setMenuOpen(false))}</div>
-              {footerActions(() => setMenuOpen(false))}
+              <div className="relative flex-1 min-h-0">
+                <div ref={navScrollRef} className="scrollbar-none h-full overflow-y-auto flex flex-col">
+                  <div className="flex-1">{navContent(() => setMenuOpen(false))}</div>
+                  {footerActions(() => setMenuOpen(false))}
+                </div>
+                <CustomScrollbar containerRef={navScrollRef} thumbClassName="bg-white/25 hover:bg-white/40" />
+              </div>
             </motion.div>
           </>
         )}

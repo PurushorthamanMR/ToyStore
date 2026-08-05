@@ -5,8 +5,8 @@ const crypto = require('crypto');
 // visitor) so wholesale_token must never be selected here - it's fetched only
 // via the admin-only endpoints below.
 const PUBLIC_SETTINGS_COLUMNS = `
-  id, store_name, store_short_name, store_logo, whatsapp_number, address, email,
-  theme_color_light, theme_color_dark,
+  id, store_name, store_short_name, store_logo, store_icon, whatsapp_number, address, email,
+  theme_color_light, theme_color_dark, active_font,
   terms_content, return_policy_content, privacy_policy_content, updated_at
 `;
 
@@ -17,6 +17,19 @@ async function getSettings(req, res) {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch settings' });
+  }
+}
+
+// Admin-only - smtp_pass must never reach the public /settings endpoint.
+async function getEmailSettings(req, res) {
+  try {
+    const [[row]] = await pool.query(
+      'SELECT smtp_host, smtp_port, smtp_user, smtp_pass, email_from FROM settings WHERE id = 1'
+    );
+    res.json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch email settings' });
   }
 }
 
@@ -44,15 +57,18 @@ async function regenerateWholesaleToken(req, res) {
 async function updateSettings(req, res) {
   try {
     const {
-      store_name, store_short_name, store_logo, whatsapp_number, address, email,
+      store_name, store_short_name, store_logo, store_icon, whatsapp_number, address, email,
       theme_color_light, theme_color_dark,
       terms_content, return_policy_content, privacy_policy_content,
+      smtp_host, smtp_port, smtp_user, smtp_pass, email_from,
+      active_font,
     } = req.body;
     const fields = [];
     const values = [];
     if (store_name !== undefined) { fields.push('store_name = ?'); values.push(store_name); }
     if (store_short_name !== undefined) { fields.push('store_short_name = ?'); values.push(store_short_name); }
     if (store_logo !== undefined) { fields.push('store_logo = ?'); values.push(store_logo || null); }
+    if (store_icon !== undefined) { fields.push('store_icon = ?'); values.push(store_icon || null); }
     if (whatsapp_number !== undefined) { fields.push('whatsapp_number = ?'); values.push(whatsapp_number || null); }
     if (address !== undefined) { fields.push('address = ?'); values.push(address || null); }
     if (email !== undefined) { fields.push('email = ?'); values.push(email || null); }
@@ -61,6 +77,12 @@ async function updateSettings(req, res) {
     if (terms_content !== undefined) { fields.push('terms_content = ?'); values.push(terms_content || null); }
     if (return_policy_content !== undefined) { fields.push('return_policy_content = ?'); values.push(return_policy_content || null); }
     if (privacy_policy_content !== undefined) { fields.push('privacy_policy_content = ?'); values.push(privacy_policy_content || null); }
+    if (smtp_host !== undefined) { fields.push('smtp_host = ?'); values.push(smtp_host || null); }
+    if (smtp_port !== undefined) { fields.push('smtp_port = ?'); values.push(smtp_port || null); }
+    if (smtp_user !== undefined) { fields.push('smtp_user = ?'); values.push(smtp_user || null); }
+    if (smtp_pass !== undefined) { fields.push('smtp_pass = ?'); values.push(smtp_pass || null); }
+    if (email_from !== undefined) { fields.push('email_from = ?'); values.push(email_from || null); }
+    if (active_font !== undefined) { fields.push('active_font = ?'); values.push(active_font); }
     if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update' });
 
     await pool.query(`UPDATE settings SET ${fields.join(', ')} WHERE id = 1`, values);
@@ -72,4 +94,4 @@ async function updateSettings(req, res) {
   }
 }
 
-module.exports = { getSettings, updateSettings, getWholesaleToken, regenerateWholesaleToken };
+module.exports = { getSettings, updateSettings, getEmailSettings, getWholesaleToken, regenerateWholesaleToken };

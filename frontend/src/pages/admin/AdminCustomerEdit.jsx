@@ -5,6 +5,7 @@ import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
 import { isValidEmail } from '../../lib/validators';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import CustomerForm from './forms/CustomerForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findCustomerById(id) {
   const [active, inactive] = await Promise.all([
@@ -65,7 +66,7 @@ export default function AdminCustomerEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!form) return <p className="text-gray-700 dark:text-gray-300">Customer not found.</p>;
 
   return (

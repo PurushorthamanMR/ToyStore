@@ -5,6 +5,7 @@ import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
 import { isValidEmail } from '../../lib/validators';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import UserForm from './forms/UserForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findUserById(id) {
   const [pending, approved, rejected] = await Promise.all([
@@ -70,7 +71,7 @@ export default function AdminUserEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!form) return <p className="text-gray-700 dark:text-gray-300">User not found.</p>;
 
   return (

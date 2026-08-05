@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import RestockForm from './forms/RestockForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 export default function AdminLowStockEdit() {
   const { id } = useParams();
@@ -37,7 +38,7 @@ export default function AdminLowStockEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!product) return <p className="text-gray-700 dark:text-gray-300">Product not found.</p>;
 
   return (

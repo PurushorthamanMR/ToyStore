@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { confirmAction, errorAlert } from '../../lib/alert';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import OrderStatusPanel, { STATUS_LABELS } from './forms/OrderStatusPanel';
+import LoadingBlock from '../../components/LoadingBlock';
 
 export default function AdminOrderEdit() {
   const { id } = useParams();
@@ -76,7 +77,7 @@ export default function AdminOrderEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!order) return <p className="text-gray-700 dark:text-gray-300">Order not found.</p>;
 
   return (

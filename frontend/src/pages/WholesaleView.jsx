@@ -13,6 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
 import Pagination from '../components/Pagination';
+import LoadingBlock from '../components/LoadingBlock';
 import Toast from '../components/Toast';
 import { useSettings } from '../context/SettingsContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -433,7 +434,7 @@ export default function WholesaleView() {
 
           <div className="flex-1">
             {loading ? (
-              <p className="text-gray-500 dark:text-gray-400">Loading...</p>
+              <LoadingBlock className="py-6" />
             ) : products.length === 0 ? (
               <p className="text-gray-500 dark:text-gray-400">No products found.</p>
             ) : (

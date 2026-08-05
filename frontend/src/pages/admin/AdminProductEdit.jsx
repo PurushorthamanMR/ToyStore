@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import ProductForm from './forms/ProductForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findProductById(id) {
   const [active, inactive] = await Promise.all([
@@ -85,7 +86,7 @@ export default function AdminProductEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!form) return <p className="text-gray-700 dark:text-gray-300">Product not found.</p>;
 
   return (

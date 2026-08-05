@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import BlogForm from './forms/BlogForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findBlogById(id) {
   const [active, inactive] = await Promise.all([
@@ -45,7 +46,7 @@ export default function AdminBlogEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!form) return <p className="text-gray-700 dark:text-gray-300">Blog not found.</p>;
 
   return (

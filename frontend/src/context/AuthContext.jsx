@@ -34,20 +34,59 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
-  async function register(payload) {
-    const { data } = await api.post('/auth/register', payload);
+  // Customer registration - two-step, email-OTP-gated.
+  async function sendRegisterOtp(payload) {
+    const { data } = await api.post('/auth/register/send-otp', payload);
+    return data;
+  }
+  async function verifyRegisterOtp(email, code) {
+    const { data } = await api.post('/auth/register/verify-otp', { email, code });
     login(data.token, data.user);
     return data;
   }
 
-  async function applySeller(payload) {
-    const { data } = await api.post('/auth/apply-seller', payload);
+  // Seller application - two-step, email-OTP-gated.
+  async function sendSellerOtp(payload) {
+    const { data } = await api.post('/auth/apply-seller/send-otp', payload);
+    return data;
+  }
+  async function verifySellerOtp(email, code) {
+    const { data } = await api.post('/auth/apply-seller/verify-otp', { email, code });
+    return data;
+  }
+
+  // Forgot password - identifier -> OTP -> reset.
+  async function sendForgotPasswordOtp(identifier) {
+    const { data } = await api.post('/auth/forgot-password/send-otp', { identifier });
+    return data;
+  }
+  async function verifyForgotPasswordOtp(identifier, code) {
+    const { data } = await api.post('/auth/forgot-password/verify-otp', { identifier, code });
+    return data;
+  }
+  async function resetPassword(resetToken, password) {
+    const { data } = await api.post('/auth/forgot-password/reset', { resetToken, password });
     return data;
   }
 
   async function signIn(identifier, password, remember = true) {
     const { data } = await api.post('/auth/login', { identifier, password });
     login(data.token, data.user, remember);
+    return data;
+  }
+
+  // Changing your own email (Profile page) - OTP-gated, unlike the rest of
+  // updateProfile, since it changes the identifier used to log in/recover.
+  async function sendChangeEmailOtp(email) {
+    const { data } = await api.post('/auth/change-email/send-otp', { email });
+    return data;
+  }
+  async function verifyChangeEmailOtp(email, code) {
+    const { data } = await api.post('/auth/change-email/verify-otp', { email, code });
+    const updatedUser = { ...user, email: data.email };
+    const store = localStorage.getItem('ccs_token') ? localStorage : sessionStorage;
+    store.setItem('ccs_user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
     return data;
   }
 
@@ -62,7 +101,25 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, signIn, applySeller, updateProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        signIn,
+        updateProfile,
+        sendRegisterOtp,
+        verifyRegisterOtp,
+        sendSellerOtp,
+        verifySellerOtp,
+        sendForgotPasswordOtp,
+        verifyForgotPasswordOtp,
+        resetPassword,
+        sendChangeEmailOtp,
+        verifyChangeEmailOtp,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

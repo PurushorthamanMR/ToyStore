@@ -12,6 +12,7 @@ import { confirmAction } from '../../lib/alert';
 import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
 import { isValidEmail } from '../../lib/validators';
 import CustomerForm from './forms/CustomerForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const PAGE_SIZE = 10;
 
@@ -107,7 +108,7 @@ export default function AdminCustomers() {
   const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE));
   const pagedCustomers = filteredCustomers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
 
   return (
     <div>

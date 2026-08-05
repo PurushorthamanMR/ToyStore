@@ -22,7 +22,7 @@ export default function FloatingOrderBar() {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-          className="fixed bottom-20 lg:bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-40"
+          className="fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-40"
         >
           <motion.button
             whileTap={{ scale: 0.97 }}

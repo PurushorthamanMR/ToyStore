@@ -4,6 +4,7 @@ import { faCoins, faReceipt, faBox, faUsers, faCubes } from '@fortawesome/free-s
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import api from '../../api/client';
 import { formatRs } from '../../lib/format';
+import LoadingBlock from '../../components/LoadingBlock';
 
 // "successful" tracks the site's configured accent color; the rest are fixed
 // semantic colors (warning/danger) that shouldn't shift with the theme.
@@ -84,7 +85,7 @@ export default function AdminDashboard() {
       <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 pt-1">Customer Analysis</h3>
 
       {loading ? (
-        <p className="text-gray-700 dark:text-gray-300">Loading...</p>
+        <LoadingBlock className="py-6" />
       ) : !stats ? (
         <p className="text-gray-500 dark:text-gray-400">Failed to load dashboard.</p>
       ) : (
@@ -194,7 +195,7 @@ export default function AdminDashboard() {
       <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 pt-2">Seller Analysis</h3>
 
       {sellerLoading ? (
-        <p className="text-gray-700 dark:text-gray-300">Loading...</p>
+        <LoadingBlock className="py-6" />
       ) : !sellerStats ? (
         <p className="text-gray-500 dark:text-gray-400">Failed to load seller analysis.</p>
       ) : (

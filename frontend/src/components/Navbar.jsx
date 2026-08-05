@@ -139,7 +139,9 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+  const filterDropdownCloseTimer = useRef(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuCloseTimer = useRef(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const mobileSearchRef = useRef(null);
   const isFirstSearchRender = useRef(true);
@@ -203,6 +205,28 @@ export default function Navbar() {
     setUserMenuOpen(false);
   }
 
+  function openUserMenu() {
+    clearTimeout(userMenuCloseTimer.current);
+    setUserMenuOpen(true);
+  }
+
+  // Small delay before closing so moving the mouse from the avatar down
+  // into the dropdown (across the gap between them) doesn't close it.
+  function scheduleCloseUserMenu() {
+    clearTimeout(userMenuCloseTimer.current);
+    userMenuCloseTimer.current = setTimeout(() => setUserMenuOpen(false), 150);
+  }
+
+  function openFilterDropdown() {
+    clearTimeout(filterDropdownCloseTimer.current);
+    setFilterDropdownOpen(true);
+  }
+
+  function scheduleCloseFilterDropdown() {
+    clearTimeout(filterDropdownCloseTimer.current);
+    filterDropdownCloseTimer.current = setTimeout(() => setFilterDropdownOpen(false), 150);
+  }
+
   const isAdmin = user && ['Admin', 'SuperAdmin'].includes(user.role);
   const initial = user ? user.name.trim().charAt(0).toUpperCase() : <FontAwesomeIcon icon={faUser} />;
 
@@ -222,6 +246,13 @@ export default function Navbar() {
           </motion.button>
 
           <Link to="/" className="text-xl sm:text-2xl font-extrabold tracking-tight whitespace-nowrap flex items-center gap-2">
+            {settings?.store_icon && (
+              <img
+                src={settings.store_icon}
+                alt=""
+                className="w-11 h-11 sm:w-14 sm:h-14 object-contain shrink-0 scale-125 lg:scale-150"
+              />
+            )}
             <span className="hidden lg:inline">{settings?.store_name || 'Soon'}</span>
             <span className="lg:hidden">{settings?.store_short_name || 'Soon'}</span>
           </Link>
@@ -235,10 +266,9 @@ export default function Navbar() {
 
           {/* Desktop row 1: Filter + user */}
           <div className="hidden lg:flex items-center gap-3 ml-auto">
-            <div className="relative">
+            <div className="relative" onMouseEnter={openFilterDropdown} onMouseLeave={scheduleCloseFilterDropdown}>
               <motion.button
                 whileTap={{ scale: 0.9 }}
-                onClick={() => setFilterDropdownOpen((v) => !v)}
                 aria-label="Filters"
                 title="Filters"
                 className="w-9 h-9 flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20"
@@ -247,27 +277,23 @@ export default function Navbar() {
               </motion.button>
               <AnimatePresence>
                 {filterDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setFilterDropdownOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-gray-100 dark:border-neutral-800 z-50 text-gray-900 dark:text-gray-100 py-2"
-                    >
-                      <FilterMenuItems theme={theme} toggleTheme={toggleTheme} currency={currency} setCurrency={setCurrency} user={user} go={go} />
-                    </motion.div>
-                  </>
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-gray-100 dark:border-neutral-800 z-50 text-gray-900 dark:text-gray-100 py-2"
+                  >
+                    <FilterMenuItems theme={theme} toggleTheme={toggleTheme} currency={currency} setCurrency={setCurrency} user={user} go={go} />
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
             {user ? (
-              <div className="relative">
+              <div className="relative" onMouseEnter={openUserMenu} onMouseLeave={scheduleCloseUserMenu}>
                 <motion.button
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => setUserMenuOpen((v) => !v)}
                   title={user.name}
                   className="flex items-center gap-2 hover:opacity-90"
                 >
@@ -278,32 +304,29 @@ export default function Navbar() {
                 </motion.button>
                 <AnimatePresence>
                   {userMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                      <motion.div
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 top-full mt-2 w-52 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-gray-100 dark:border-neutral-800 z-50 text-gray-900 dark:text-gray-100 py-2"
-                      >
-                        <DrawerItem icon={<FontAwesomeIcon icon={faUser} />} label="My Account" onClick={() => go('/profile')} />
-                        <DrawerItem icon={<FontAwesomeIcon icon={faBox} />} label="My Orders" onClick={() => go('/my-orders')} />
-                        {isAdmin && (
-                          <DrawerItem icon={<FontAwesomeIcon icon={faToolbox} />} label="Admin Panel" onClick={() => go('/admin')} />
-                        )}
-                        <div className="my-2 border-t border-gray-100 dark:border-neutral-800" />
-                        <DrawerItem
-                          icon={<FontAwesomeIcon icon={faRightFromBracket} />}
-                          label="Logout"
-                          danger
-                          onClick={() => {
-                            logout();
-                            window.location.href = '/';
-                          }}
-                        />
-                      </motion.div>
-                    </>
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-52 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-gray-100 dark:border-neutral-800 z-50 text-gray-900 dark:text-gray-100 py-2"
+                    >
+                      <DrawerItem icon={<FontAwesomeIcon icon={faUser} />} label="My Account" onClick={() => go('/profile')} />
+                      <DrawerItem icon={<FontAwesomeIcon icon={faBox} />} label="My Orders" onClick={() => go('/my-orders')} />
+                      {isAdmin && (
+                        <DrawerItem icon={<FontAwesomeIcon icon={faToolbox} />} label="Admin Panel" onClick={() => go('/admin')} />
+                      )}
+                      <div className="my-2 border-t border-gray-100 dark:border-neutral-800" />
+                      <DrawerItem
+                        icon={<FontAwesomeIcon icon={faRightFromBracket} />}
+                        label="Logout"
+                        danger
+                        onClick={() => {
+                          logout();
+                          window.location.href = '/';
+                        }}
+                      />
+                    </motion.div>
                   )}
                 </AnimatePresence>
               </div>

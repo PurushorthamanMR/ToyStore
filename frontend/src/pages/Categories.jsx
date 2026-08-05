@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import NotConfigured from '../components/NotConfigured';
+import LoadingBlock from '../components/LoadingBlock';
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -17,12 +19,19 @@ export default function Categories() {
   }, []);
 
   if (loading) {
-    return <div className="max-w-6xl mx-auto px-4 py-8 text-gray-700 dark:text-gray-300">Loading...</div>;
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <LoadingBlock className="py-16" />
+      </div>
+    );
   }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <h2 className="text-xl font-bold mb-6 text-gray-900 dark:text-gray-100">All Categories</h2>
+      {categories.length === 0 ? (
+        <NotConfigured />
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {categories.map((cat) => {
           const subs = subcategories.filter((sc) => sc.category_id === cat.id);
@@ -58,6 +67,7 @@ export default function Categories() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

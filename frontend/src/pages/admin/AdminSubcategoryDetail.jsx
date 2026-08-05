@@ -6,6 +6,7 @@ import api from '../../api/client';
 import { confirmAction } from '../../lib/alert';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import DetailField from '../../components/DetailField';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findSubcategoryById(id) {
   const [active, inactive] = await Promise.all([
@@ -37,7 +38,7 @@ export default function AdminSubcategoryDetail() {
     setSubcategory((s) => ({ ...s, is_active: 1 }));
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!subcategory) return <p className="text-gray-700 dark:text-gray-300">Subcategory not found.</p>;
 
   return (

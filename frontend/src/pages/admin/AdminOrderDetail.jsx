@@ -7,6 +7,7 @@ import { formatRs } from '../../lib/format';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import DetailField from '../../components/DetailField';
 import { STATUS_LABELS } from './forms/OrderStatusPanel';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const STATUS_STYLES = {
   pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
@@ -28,7 +29,7 @@ export default function AdminOrderDetail() {
     });
   }, [id]);
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!order) return <p className="text-gray-700 dark:text-gray-300">Order not found.</p>;
 
   return (

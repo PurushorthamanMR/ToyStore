@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticateOptional } = require('../middleware/auth');
 const { uploadImage } = require('../controllers/uploadController');
 
 const storage = multer.diskStorage({
@@ -30,7 +30,7 @@ const upload = multer({
 
 const router = express.Router();
 
-router.post('/', authenticate, requireAdmin, upload.single('image'), uploadImage);
+router.post('/', authenticateOptional, upload.single('image'), uploadImage);
 
 router.use((err, req, res, next) => {
   if (err.code === 'LIMIT_FILE_SIZE') {

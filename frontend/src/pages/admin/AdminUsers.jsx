@@ -9,6 +9,7 @@ import { confirmAction } from '../../lib/alert';
 import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
 import { isValidEmail } from '../../lib/validators';
 import UserForm from './forms/UserForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const ROLE_LABELS = {
   Seller: 'Seller',
@@ -120,7 +121,7 @@ export default function AdminUsers() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
 
   return (
     <div>

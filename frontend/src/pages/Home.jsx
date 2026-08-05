@@ -14,6 +14,8 @@ import {
 import api from '../api/client';
 import ProductRow from '../components/ProductRow';
 import ProductCard from '../components/ProductCard';
+import NotConfigured from '../components/NotConfigured';
+import LoadingBlock from '../components/LoadingBlock';
 import { getHomeCache, setHomeCache } from '../lib/homeCache';
 import { useAuth } from '../context/AuthContext';
 
@@ -214,7 +216,7 @@ function SubcategorySpotlight({ subcategories }) {
   );
 }
 
-function AllProductsSection() {
+function AllProductsSection({ onEmptyChange }) {
   const { user } = useAuth();
   const cached = getHomeCache();
   const [products, setProducts] = useState(cached?.allProducts ?? []);
@@ -240,9 +242,12 @@ function AllProductsSection() {
           allProductsOffset: res.data.length,
           allProductsHasMore: res.data.length === PRODUCTS_PAGE_SIZE,
         });
+        onEmptyChange?.(res.data.length === 0);
       })
       .finally(() => setLoading(false));
   }, [user]);
+
+  if (!loading && products.length === 0) return null;
 
   async function loadMore() {
     setLoadingMore(true);
@@ -276,9 +281,7 @@ function AllProductsSection() {
         }
       />
       {loading ? (
-        <p className="text-gray-500 dark:text-gray-400">Loading...</p>
-      ) : products.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400">No products found.</p>
+        <LoadingBlock className="py-6" />
       ) : (
         <>
           <ProductGrid products={products} columns="md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" />
@@ -308,6 +311,9 @@ export default function Home() {
   const [bestSelling, setBestSelling] = useState(cached?.bestSelling ?? []);
   const [banners, setBanners] = useState(cached?.banners ?? []);
   const [loading, setLoading] = useState(!cached);
+  const [productsEmpty, setProductsEmpty] = useState(
+    cached?.allProducts ? cached.allProducts.length === 0 : false
+  );
 
   useEffect(() => {
     // Refetch in the background even when cache exists, so a returning
@@ -345,10 +351,25 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, [user]);
 
+  const hasCuratedContent =
+    !!offerImage ||
+    hotCategories.length > 0 ||
+    hotSubcategories.length > 0 ||
+    featuredProducts.length > 0 ||
+    featuredCategories.length > 0 ||
+    bestSelling.length > 0 ||
+    banners.length > 0;
+  const nothingConfigured = !hasCuratedContent && productsEmpty;
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-10">
       {loading ? (
-        <p className="py-8 text-center text-gray-500 dark:text-gray-400">Loading catalog...</p>
+        <LoadingBlock className="py-16" />
+      ) : nothingConfigured ? (
+        <>
+          <NotConfigured height="h-64" />
+          <AllProductsSection onEmptyChange={setProductsEmpty} />
+        </>
       ) : (
         <>
           {/* Hero Section */}
@@ -417,7 +438,7 @@ export default function Home() {
           <BannerCarousel banners={banners} />
 
           {/* Product Section */}
-          <AllProductsSection />
+          <AllProductsSection onEmptyChange={setProductsEmpty} />
         </>
       )}
     </div>

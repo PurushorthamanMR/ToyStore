@@ -3,14 +3,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PasswordInput from '../components/PasswordInput';
 import FieldStatus from '../components/FieldStatus';
+import AvatarUpload from '../components/AvatarUpload';
+import OtpInputModal from '../components/OtpInputModal';
 import { useDuplicateCheck } from '../lib/useDuplicateCheck';
 import { isValidEmail } from '../lib/validators';
 import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
 
 export default function Register() {
-  const { register } = useAuth();
+  const { sendRegisterOtp, verifyRegisterOtp } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ full_name: '', whatsapp_number: '', email: '', password: '' });
+  const [form, setForm] = useState({ full_name: '', whatsapp_number: '', email: '', password: '', image: '' });
+  const [step, setStep] = useState('form');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -41,13 +44,26 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await register(form);
-      navigate('/');
+      await sendRegisterOtp(form);
+      setStep('otp');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (step === 'otp') {
+    return (
+      <OtpInputModal
+        identifier={form.email}
+        title="Verify your email"
+        onVerify={(code) => verifyRegisterOtp(form.email, code)}
+        onResend={() => sendRegisterOtp(form)}
+        onVerified={() => navigate('/')}
+        onBack={() => setStep('form')}
+      />
+    );
   }
 
   return (
@@ -58,6 +74,9 @@ export default function Register() {
       </div>
       {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
       <form onSubmit={handleSubmit} className="space-y-5 md:space-y-4">
+        <div className="flex justify-center">
+          <AvatarUpload src={form.image} onChange={(url) => setForm({ ...form, image: url })} size="w-20 h-20" />
+        </div>
         <div>
           <label className={authLabelClass}>Full Name</label>
           <input
@@ -79,9 +98,10 @@ export default function Register() {
           <FieldStatus status={phoneStatus} duplicateMessage="An account with this WhatsApp number already exists" />
         </div>
         <div>
-          <label className={authLabelClass}>Email (optional)</label>
+          <label className={authLabelClass}>Email</label>
           <input
             type="email"
+            required
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             className={authInputClass}
@@ -108,7 +128,7 @@ export default function Register() {
           disabled={loading || phoneStatus === 'duplicate' || emailStatus === 'duplicate' || emailInvalid}
           className={`${authButtonClass} mt-2`}
         >
-          {loading ? 'Creating account...' : 'Register'}
+          {loading ? 'Sending code...' : 'Register'}
         </button>
       </form>
       <p className="text-sm text-center mt-6 md:mt-4 text-gray-500 dark:text-gray-400">

@@ -3,6 +3,7 @@ import api from '../api/client';
 
 const SettingsContext = createContext(null);
 const STORAGE_KEY = 'ccs_settings';
+const FONTS_STORAGE_KEY = 'ccs_fonts';
 const DEFAULT_LOGO = '/img/logo.jpg';
 
 const FAVICON_MIME_TYPES = {
@@ -42,13 +43,35 @@ function applyTheme(settings) {
   }
 }
 
+// Loads the Google Fonts stylesheet for the site's active font and points
+// the --font-sans variable (used by body + Tailwind's font-sans utility) at
+// it, so switching fonts in Admin Settings applies everywhere without a
+// rebuild. Falls back to just the CSS variable if the font list hasn't
+// loaded yet - the stylesheet link gets attached as soon as it does.
+function applyFont(activeFontName, fonts) {
+  if (!activeFontName) return;
+  const root = document.documentElement;
+  root.style.setProperty('--font-sans', `"${activeFontName}", system-ui, 'Segoe UI', Roboto, sans-serif`);
+
+  const font = fonts?.find((f) => f.name === activeFontName);
+  if (!font) return;
+  let link = document.getElementById('active-font-link');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'active-font-link';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+  }
+  link.href = `https://fonts.googleapis.com/css2?family=${font.family_param}&display=swap`;
+}
+
 function applyTitle(settings) {
   document.title = settings?.store_name || 'Soon';
 }
 
-function readCache() {
+function readCache(key) {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return JSON.parse(localStorage.getItem(key));
   } catch {
     return null;
   }
@@ -56,21 +79,25 @@ function readCache() {
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(() => {
-    const cached = readCache();
+    const cached = readCache(STORAGE_KEY);
+    const cachedFonts = readCache(FONTS_STORAGE_KEY);
     applyTheme(cached);
     applyTitle(cached);
     applyFavicon(cached);
+    applyFont(cached?.active_font, cachedFonts);
     return cached;
   });
 
   function refreshSettings() {
-    return api.get('/settings').then((res) => {
-      setSettings(res.data);
-      applyTheme(res.data);
-      applyTitle(res.data);
-      applyFavicon(res.data);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(res.data));
-      return res.data;
+    return Promise.all([api.get('/settings'), api.get('/fonts')]).then(([settingsRes, fontsRes]) => {
+      setSettings(settingsRes.data);
+      applyTheme(settingsRes.data);
+      applyTitle(settingsRes.data);
+      applyFavicon(settingsRes.data);
+      applyFont(settingsRes.data.active_font, fontsRes.data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsRes.data));
+      localStorage.setItem(FONTS_STORAGE_KEY, JSON.stringify(fontsRes.data));
+      return settingsRes.data;
     });
   }
 

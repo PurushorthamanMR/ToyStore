@@ -2,6 +2,7 @@ import { Routes, Route, useLocation, useNavigate, matchPath } from 'react-router
 import { useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Navbar from './components/Navbar';
+import CustomScrollbar from './components/CustomScrollbar';
 import Footer from './components/Footer';
 import FloatingOrderBar from './components/FloatingOrderBar';
 import FloatingWhatsApp from './components/FloatingWhatsApp';
@@ -18,6 +19,7 @@ import Login from './pages/Login';
 import SellerLogin from './pages/SellerLogin';
 import Register from './pages/Register';
 import ApplySeller from './pages/ApplySeller';
+import ForgotPassword from './pages/ForgotPassword';
 import MyOrders from './pages/MyOrders';
 import Profile from './pages/Profile';
 import Wishlist from './pages/Wishlist';
@@ -65,7 +67,7 @@ import PageNotFound from './pages/PageNotFound';
 // former bounces to Home, the latter falls through to the 404 route below.
 const KNOWN_PATHS = [
   '/', '/products', '/products/:slug', '/categories', '/blogs', '/cart',
-  '/login', '/seller-login', '/register', '/apply-seller',
+  '/login', '/seller-login', '/register', '/apply-seller', '/forgot-password',
   '/checkout', '/my-orders', '/profile', '/wishlist',
   '/terms', '/return-policy', '/privacy-policy',
   '/admin', '/admin/dashboard', '/admin/products', '/admin/categories', '/admin/subcategories', '/admin/orders',
@@ -73,7 +75,7 @@ const KNOWN_PATHS = [
   '/admin/settings',
 ];
 
-const AUTH_PATHS = ['/login', '/register', '/apply-seller', '/seller-login'];
+const AUTH_PATHS = ['/login', '/register', '/apply-seller', '/seller-login', '/forgot-password'];
 
 function App() {
   const location = useLocation();
@@ -97,20 +99,15 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors">
-      {!isAdminRoute && !isAuthRoute && !isWholesaleRoute && <Navbar />}
-      <main className={isAdminRoute || isAuthRoute || isWholesaleRoute ? 'flex-1' : 'flex-1 pb-32 lg:pb-24'}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={isAuthRoute ? '__auth__' : location.pathname}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
-          >
-            <Routes location={location}>
-              <Route path="/" element={<Home />} />
+  // Admin pages render their own <position: fixed> overlays (the mobile
+  // sidebar drawer). A `transform` on any ancestor becomes the containing
+  // block for those per the CSS spec, so admin routes deliberately skip the
+  // page-transition motion.div below (which sets `y` = a transform) -
+  // otherwise the drawer's height resolves against the animated wrapper's
+  // content height instead of the real viewport, breaking its scrolling.
+  const routesElement = (
+    <Routes location={location}>
+      <Route path="/" element={<Home />} />
               <Route path="/products" element={<ProductList />} />
               <Route path="/products/:slug" element={<ProductDetail />} />
               <Route path="/categories" element={<Categories />} />
@@ -124,6 +121,7 @@ function App() {
                 <Route path="/seller-login" element={<SellerLogin />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/apply-seller" element={<ApplySeller />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
               </Route>
               <Route
                 path="/checkout"
@@ -200,9 +198,29 @@ function App() {
               </Route>
               <Route path="/wholesale-view/:token" element={<WholesaleView />} />
               <Route path="*" element={<PageNotFound />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
+    </Routes>
+  );
+
+  return (
+    <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors">
+      <CustomScrollbar />
+      {!isAdminRoute && !isAuthRoute && !isWholesaleRoute && <Navbar />}
+      <main className={isAdminRoute || isAuthRoute || isWholesaleRoute ? 'flex-1' : 'flex-1 pb-32 lg:pb-24'}>
+        {isAdminRoute ? (
+          routesElement
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={isAuthRoute ? '__auth__' : location.pathname}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+            >
+              {routesElement}
+            </motion.div>
+          </AnimatePresence>
+        )}
       </main>
       {!isAdminRoute && !isAuthRoute && !isWholesaleRoute && <FloatingOrderBar />}
       {isHomeRoute && <FloatingWhatsApp />}

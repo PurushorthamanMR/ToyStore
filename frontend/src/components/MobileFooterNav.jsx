@@ -14,7 +14,7 @@ export default function MobileFooterNav() {
   const { user } = useAuth();
 
   return (
-    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-neutral-950 border-t border-gray-100 dark:border-neutral-800 flex">
+    <nav className="lg:hidden fixed bottom-2 inset-x-0 z-40 bg-white dark:bg-neutral-950 border-t border-gray-100 dark:border-neutral-800 flex">
       <NavLink to="/" end className={tabClass}>
         <FontAwesomeIcon icon={faHouse} className="text-lg" />
         Home

@@ -10,6 +10,7 @@ import Pagination from '../../components/Pagination';
 import AdminMobileRow from '../../components/AdminMobileRow';
 import Modal from '../../components/Modal';
 import OrderStatusPanel, { STATUS_LABELS } from './forms/OrderStatusPanel';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const PAGE_SIZE = 9;
 
@@ -113,7 +114,7 @@ export default function AdminOrders() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
 
   const q = search.trim().toLowerCase();
   const filteredOrders = orders.filter((o) => {

@@ -7,6 +7,8 @@ import api from '../api/client';
 import ProductRow from '../components/ProductRow';
 import ProductCard from '../components/ProductCard';
 import Pagination from '../components/Pagination';
+import NotConfigured from '../components/NotConfigured';
+import LoadingBlock from '../components/LoadingBlock';
 import { useAuth } from '../context/AuthContext';
 
 const PAGE_SIZE = 10;
@@ -170,9 +172,9 @@ export default function ProductList() {
                 : 'All Products'}
         </h2>
         {loading ? (
-          <p className="text-gray-500 dark:text-gray-400">Loading...</p>
+          <LoadingBlock className="py-16" />
         ) : products.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400">No products found.</p>
+          <NotConfigured />
         ) : (
           <div key={`${category}-${subcategory}-${search}-${page}`}>
             <div className="md:hidden max-w-2xl divide-y divide-gray-100 dark:divide-neutral-800">

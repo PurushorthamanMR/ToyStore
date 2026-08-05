@@ -4,6 +4,7 @@ import api from '../api/client';
 import { useCart } from '../context/CartContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useAuth } from '../context/AuthContext';
+import LoadingBlock from '../components/LoadingBlock';
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -20,7 +21,11 @@ export default function ProductDetail() {
   }, [slug, user]);
 
   if (!product) {
-    return <div className="max-w-6xl mx-auto px-4 py-8 text-gray-700 dark:text-gray-300">Loading...</div>;
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <LoadingBlock className="py-16" />
+      </div>
+    );
   }
 
   const hasSalePrice = product.sale_price !== undefined;

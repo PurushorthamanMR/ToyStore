@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faNewspaper } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
+import NotConfigured from '../components/NotConfigured';
+import LoadingBlock from '../components/LoadingBlock';
 
 function BlogCard({ blog }) {
   const images = blog.images || [];
@@ -34,17 +34,17 @@ export default function Blogs() {
   }, []);
 
   if (loading) {
-    return <div className="max-w-3xl mx-auto px-4 py-8 text-gray-700 dark:text-gray-300">Loading...</div>;
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <LoadingBlock className="py-16" />
+      </div>
+    );
   }
 
   if (blogs.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <FontAwesomeIcon icon={faNewspaper} className="text-4xl text-gray-300 dark:text-neutral-700 mb-4" />
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Blog coming soon</h2>
-        <p className="text-gray-500 dark:text-gray-400">
-          We're working on toy guides, tips, and news. Check back soon!
-        </p>
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <NotConfigured height="h-64" />
       </div>
     );
   }

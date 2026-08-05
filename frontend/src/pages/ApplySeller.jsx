@@ -5,13 +5,16 @@ import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../context/AuthContext';
 import PasswordInput from '../components/PasswordInput';
 import FieldStatus from '../components/FieldStatus';
+import AvatarUpload from '../components/AvatarUpload';
+import OtpInputModal from '../components/OtpInputModal';
 import { useDuplicateCheck } from '../lib/useDuplicateCheck';
 import { isValidEmail } from '../lib/validators';
 import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
 
 export default function ApplySeller() {
-  const { applySeller } = useAuth();
-  const [form, setForm] = useState({ full_name: '', email: '', mobile: '', password: '', shop_name: '', city: '' });
+  const { sendSellerOtp, verifySellerOtp } = useAuth();
+  const [form, setForm] = useState({ full_name: '', email: '', mobile: '', password: '', shop_name: '', city: '', image: '' });
+  const [step, setStep] = useState('form');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -43,23 +46,40 @@ export default function ApplySeller() {
     }
     setLoading(true);
     try {
-      const data = await applySeller(form);
-      if (data.whatsapp?.number) {
-        // Navigate the current tab rather than pre-opening a blank one and
-        // redirecting it later - on mobile browsers (notably iOS Safari)
-        // that pattern leaves the new tab stuck on about:blank because the
-        // window handle can't be navigated after the async request resolves.
-        // A same-tab location change isn't subject to popup blocking at all.
-        const href = `https://wa.me/${data.whatsapp.number}?text=${encodeURIComponent(data.whatsapp.text)}`;
-        window.location.href = href;
-      } else {
-        setSubmitted(true);
-      }
+      await sendSellerOtp(form);
+      setStep('otp');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to submit application');
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleVerified(data) {
+    if (data.whatsapp?.number) {
+      // Navigate the current tab rather than pre-opening a blank one and
+      // redirecting it later - on mobile browsers (notably iOS Safari)
+      // that pattern leaves the new tab stuck on about:blank because the
+      // window handle can't be navigated after the async request resolves.
+      // A same-tab location change isn't subject to popup blocking at all.
+      const href = `https://wa.me/${data.whatsapp.number}?text=${encodeURIComponent(data.whatsapp.text)}`;
+      window.location.href = href;
+    } else {
+      setSubmitted(true);
+    }
+  }
+
+  if (step === 'otp') {
+    return (
+      <OtpInputModal
+        identifier={form.email}
+        title="Verify your email"
+        onVerify={(code) => verifySellerOtp(form.email, code)}
+        onResend={() => sendSellerOtp(form)}
+        onVerified={handleVerified}
+        onBack={() => setStep('form')}
+      />
+    );
   }
 
   if (submitted) {
@@ -87,6 +107,9 @@ export default function ApplySeller() {
       </div>
       {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
       <form onSubmit={handleSubmit} className="space-y-5 md:space-y-4">
+        <div className="flex justify-center">
+          <AvatarUpload src={form.image} onChange={(url) => setForm({ ...form, image: url })} size="w-20 h-20" />
+        </div>
         <div>
           <label className={authLabelClass}>Full Name</label>
           <input
@@ -156,7 +179,7 @@ export default function ApplySeller() {
           disabled={loading || emailInvalid || emailStatus === 'duplicate' || mobileStatus === 'duplicate'}
           className={`${authButtonClass} mt-2`}
         >
-          {loading ? 'Submitting...' : 'Apply'}
+          {loading ? 'Sending code...' : 'Apply'}
         </button>
       </form>
       <p className="text-sm text-center mt-6 md:mt-4 text-gray-500 dark:text-gray-400">

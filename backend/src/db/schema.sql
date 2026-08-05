@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   address VARCHAR(255),
   shop_name VARCHAR(150),
   city VARCHAR(100),
+  image VARCHAR(255),
   role_id INT NOT NULL,
   status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'approved',
   is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS customers (
   name VARCHAR(100) NOT NULL,
   whatsapp_number VARCHAR(30) NOT NULL UNIQUE,
   email VARCHAR(150) DEFAULT NULL,
+  image VARCHAR(255) DEFAULT NULL,
   password VARCHAR(255) NOT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -134,11 +136,25 @@ CREATE TABLE IF NOT EXISTS blogs (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS otp_codes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  identifier VARCHAR(150) NOT NULL,
+  purpose VARCHAR(30) NOT NULL,
+  code_hash VARCHAR(255) NOT NULL,
+  payload TEXT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  expires_at TIMESTAMP NOT NULL,
+  verified_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_otp_identifier_purpose (identifier, purpose)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   id INT PRIMARY KEY DEFAULT 1,
   store_name VARCHAR(150) NOT NULL DEFAULT 'Soon',
   store_short_name VARCHAR(20) NOT NULL DEFAULT 'Soon',
   store_logo VARCHAR(255),
+  store_icon VARCHAR(255),
   whatsapp_number VARCHAR(30),
   address VARCHAR(255),
   email VARCHAR(150),
@@ -148,5 +164,18 @@ CREATE TABLE IF NOT EXISTS settings (
   terms_content LONGTEXT,
   return_policy_content LONGTEXT,
   privacy_policy_content LONGTEXT,
+  smtp_host VARCHAR(150),
+  smtp_port INT,
+  smtp_user VARCHAR(150),
+  smtp_pass VARCHAR(255),
+  email_from VARCHAR(150),
+  active_font VARCHAR(150) NOT NULL DEFAULT 'Archivo Narrow',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS fonts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  family_param VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

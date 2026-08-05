@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import ImageUploadBox from '../../components/ImageUploadBox';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findOfferById(id) {
   const [active, inactive] = await Promise.all([
@@ -49,7 +50,7 @@ export default function AdminOfferEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!found) return <p className="text-gray-700 dark:text-gray-300">Offer not found.</p>;
 
   return (

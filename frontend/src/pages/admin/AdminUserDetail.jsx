@@ -6,6 +6,7 @@ import api from '../../api/client';
 import { confirmAction } from '../../lib/alert';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import DetailField from '../../components/DetailField';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const STATUS_STYLES = {
   approved: 'bg-wa-green/10 text-wa-green-dark dark:text-wa-green',
@@ -47,7 +48,7 @@ export default function AdminUserDetail() {
     load();
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!user) return <p className="text-gray-700 dark:text-gray-300">User not found.</p>;
 
   return (

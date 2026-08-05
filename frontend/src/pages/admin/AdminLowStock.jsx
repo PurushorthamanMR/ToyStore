@@ -9,6 +9,7 @@ import AdminFilterBar from '../../components/AdminFilterBar';
 import Pagination from '../../components/Pagination';
 import AdminMobileRow from '../../components/AdminMobileRow';
 import RestockForm from './forms/RestockForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const PAGE_SIZE = 9;
 
@@ -71,7 +72,7 @@ export default function AdminLowStock() {
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const pagedProducts = filteredProducts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
 
   return (
     <div>

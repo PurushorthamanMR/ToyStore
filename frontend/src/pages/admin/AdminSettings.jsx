@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCopy,
@@ -8,22 +9,26 @@ import {
   faPalette,
   faFileContract,
   faLink,
+  faEnvelope,
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../../api/client';
 import { useSettings } from '../../context/SettingsContext';
 import { successAlert, confirmAction, errorAlert } from '../../lib/alert';
 import ImageUploadBox from '../../components/ImageUploadBox';
+import LoadingBlock from '../../components/LoadingBlock';
 
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const DEFAULT_LOGO = '/img/logo.jpg';
 
-const SECTIONS = [
+export const SETTINGS_SECTIONS = [
   { key: 'general', label: 'General', icon: faStore },
   { key: 'contact', label: 'Contact', icon: faPhone },
   { key: 'appearance', label: 'Appearance', icon: faPalette },
   { key: 'legal', label: 'Legal Pages', icon: faFileContract },
+  { key: 'email', label: 'Email (SMTP)', icon: faEnvelope },
   { key: 'wholesale', label: 'Wholesale Link', icon: faLink },
 ];
+const SECTIONS = SETTINGS_SECTIONS;
 
 function Label({ children, hint }) {
   return (
@@ -62,12 +67,19 @@ function SaveButton({ saving, disabled, children = 'Save' }) {
 
 export default function AdminSettings() {
   const { settings, refreshSettings } = useSettings();
-  const [activeSection, setActiveSection] = useState('general');
+  const [searchParams] = useSearchParams();
+  const requestedSection = searchParams.get('tab');
+  const activeSection = SECTIONS.some((s) => s.key === requestedSection) ? requestedSection : 'general';
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [wholesaleToken, setWholesaleToken] = useState(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [emailForm, setEmailForm] = useState(null);
+  const [fonts, setFonts] = useState([]);
+  const [previewFont, setPreviewFont] = useState(null);
+  const [fontSnippet, setFontSnippet] = useState('');
+  const [addingFont, setAddingFont] = useState(false);
 
   useEffect(() => {
     if (settings) setForm(settings);
@@ -75,15 +87,47 @@ export default function AdminSettings() {
 
   useEffect(() => {
     api.get('/settings/wholesale-token').then((res) => setWholesaleToken(res.data.wholesale_token));
+    api.get('/settings/email').then((res) => setEmailForm(res.data));
+    api.get('/fonts').then((res) => setFonts(res.data));
   }, []);
 
-  function selectSection(key) {
-    setActiveSection(key);
+  // Only takes the saved value once, so the dropdown isn't yanked back to
+  // the saved font while the admin is mid-preview of a different one.
+  useEffect(() => {
+    if (form?.active_font && previewFont === null) setPreviewFont(form.active_font);
+  }, [form, previewFont]);
+
+  // Loads every registered font's stylesheet while this page is open, so the
+  // preview below can render whichever one is picked in the dropdown - not
+  // just the site's currently active font.
+  useEffect(() => {
+    const links = fonts.map((f) => {
+      let link = document.getElementById(`font-preview-${f.id}`);
+      if (!link) {
+        link = document.createElement('link');
+        link.id = `font-preview-${f.id}`;
+        link.rel = 'stylesheet';
+        link.href = `https://fonts.googleapis.com/css2?family=${f.family_param}&display=swap`;
+        document.head.appendChild(link);
+      }
+      return link;
+    });
+    return () => links.forEach((link) => link.remove());
+  }, [fonts]);
+
+  useEffect(() => {
     setError('');
-  }
+  }, [activeSection]);
 
   async function saveFields(fields) {
     setError('');
+    const confirmed = await confirmAction({
+      title: 'Save these changes?',
+      text: 'This will update the settings live across the site.',
+      confirmText: 'Save',
+    });
+    if (!confirmed) return;
+
     setSaving(true);
     try {
       await api.put('/settings', fields);
@@ -98,7 +142,12 @@ export default function AdminSettings() {
 
   function handleGeneralSubmit(e) {
     e.preventDefault();
-    saveFields({ store_name: form.store_name, store_short_name: form.store_short_name, store_logo: form.store_logo });
+    saveFields({
+      store_name: form.store_name,
+      store_short_name: form.store_short_name,
+      store_logo: form.store_logo,
+      store_icon: form.store_icon,
+    });
   }
 
   function handleContactSubmit(e) {
@@ -115,7 +164,41 @@ export default function AdminSettings() {
       setError('Theme colors must be a valid hex code, e.g. #1DA851');
       return;
     }
-    saveFields({ theme_color_light: form.theme_color_light, theme_color_dark: form.theme_color_dark });
+    saveFields({
+      theme_color_light: form.theme_color_light,
+      theme_color_dark: form.theme_color_dark,
+      active_font: previewFont,
+    });
+  }
+
+  async function handleAddFont() {
+    setError('');
+    setAddingFont(true);
+    try {
+      const { data } = await api.post('/fonts', { snippet: fontSnippet });
+      setFonts(data.fonts);
+      setFontSnippet('');
+      if (data.added.length > 0) {
+        successAlert('Font added', `Added: ${data.added.join(', ')}`);
+      } else {
+        errorAlert('Nothing new', 'Every font in that snippet is already in the list.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to add font');
+    } finally {
+      setAddingFont(false);
+    }
+  }
+
+  function handleEmailSubmit(e) {
+    e.preventDefault();
+    saveFields({
+      smtp_host: emailForm.smtp_host,
+      smtp_port: emailForm.smtp_port ? Number(emailForm.smtp_port) : null,
+      smtp_user: emailForm.smtp_user,
+      smtp_pass: emailForm.smtp_pass,
+      email_from: emailForm.email_from,
+    });
   }
 
   function handleLegalSubmit(e) {
@@ -153,35 +236,13 @@ export default function AdminSettings() {
     }
   }
 
-  if (!form) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (!form) return <LoadingBlock className="py-16" />;
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-3xl">
       <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">Settings</h2>
 
-      <div className="flex flex-col lg:flex-row gap-5">
-        <nav className="lg:w-52 shrink-0">
-          <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0">
-            {SECTIONS.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => selectSection(s.key)}
-                className={`flex items-center gap-2.5 shrink-0 lg:shrink text-left px-3.5 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-colors ${
-                  activeSection === s.key
-                    ? 'bg-wa-green text-white shadow-sm'
-                    : 'bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800'
-                }`}
-              >
-                <FontAwesomeIcon icon={s.icon} className="w-4" />
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </nav>
-
-        <div className="flex-1 min-w-0">
-          {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
 
           {activeSection === 'general' && (
             <form onSubmit={handleGeneralSubmit}>
@@ -213,6 +274,16 @@ export default function AdminSettings() {
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Leave unset to use the default logo shown here.
+                  </p>
+                </div>
+                <div>
+                  <Label hint="(rounded icon shown next to the store name in the navbar)">Store Icon</Label>
+                  <ImageUploadBox
+                    value={form.store_icon}
+                    onChange={(url) => setForm({ ...form, store_icon: url })}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Leave unset to show just the store name with no icon.
                   </p>
                 </div>
                 <SaveButton saving={saving} />
@@ -311,6 +382,49 @@ export default function AdminSettings() {
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Used in dark mode.</p>
                   </div>
                 </div>
+
+                <div className="pt-2 border-t border-gray-100 dark:border-neutral-800">
+                  <Label hint="(used across the whole site)">Font Style</Label>
+                  <select
+                    value={previewFont || ''}
+                    onChange={(e) => setPreviewFont(e.target.value)}
+                    className={inputClass}
+                  >
+                    {fonts.map((f) => (
+                      <option key={f.id} value={f.name}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-3 rounded-lg border border-gray-200 dark:border-neutral-700 p-5 text-center">
+                    <p
+                      className="text-2xl text-gray-900 dark:text-gray-100"
+                      style={{ fontFamily: previewFont ? `"${previewFont}", sans-serif` : undefined }}
+                    >
+                      Here is the Font Style
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <Label hint="(paste a Google Fonts <link> snippet to add more options above)">Add New Font</Label>
+                  <textarea
+                    rows={3}
+                    value={fontSnippet}
+                    onChange={(e) => setFontSnippet(e.target.value)}
+                    placeholder='<link href="https://fonts.googleapis.com/css2?family=..." rel="stylesheet">'
+                    className={`${inputClass} font-mono text-xs`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddFont}
+                    disabled={addingFont || !fontSnippet.trim()}
+                    className="mt-2 bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 disabled:opacity-50 text-gray-700 dark:text-gray-300 font-semibold text-sm px-3.5 py-2 rounded-md"
+                  >
+                    {addingFont ? 'Adding...' : 'Add Font'}
+                  </button>
+                </div>
+
                 <SaveButton saving={saving} disabled={lightColorInvalid || darkColorInvalid} />
               </SectionCard>
             </form>
@@ -354,6 +468,66 @@ export default function AdminSettings() {
             </form>
           )}
 
+          {activeSection === 'email' && (
+            emailForm ? (
+              <form onSubmit={handleEmailSubmit}>
+                <SectionCard
+                  title="Email (SMTP)"
+                  description="Used to send 6-digit verification codes for signup, seller applications, and password resets. Free options: Brevo (300 emails/day) or Resend (100/day). Leave blank to print codes to the server console instead of emailing them (useful for local testing)."
+                >
+                  <div>
+                    <Label hint="(e.g. smtp-relay.brevo.com)">SMTP Host</Label>
+                    <input
+                      value={emailForm.smtp_host || ''}
+                      onChange={(e) => setEmailForm({ ...emailForm, smtp_host: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <Label hint="(usually 587)">SMTP Port</Label>
+                    <input
+                      type="number"
+                      value={emailForm.smtp_port || ''}
+                      onChange={(e) => setEmailForm({ ...emailForm, smtp_port: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <Label>SMTP Username</Label>
+                    <input
+                      value={emailForm.smtp_user || ''}
+                      onChange={(e) => setEmailForm({ ...emailForm, smtp_user: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <Label>SMTP Password</Label>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={emailForm.smtp_pass || ''}
+                      onChange={(e) => setEmailForm({ ...emailForm, smtp_pass: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <Label hint='(the "from" address customers see)'>Email From</Label>
+                    <input
+                      type="email"
+                      placeholder="e.g. no-reply@yourstore.com"
+                      value={emailForm.email_from || ''}
+                      onChange={(e) => setEmailForm({ ...emailForm, email_from: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <SaveButton saving={saving} />
+                </SectionCard>
+              </form>
+            ) : (
+              <LoadingBlock className="py-10" />
+            )
+          )}
+
           {activeSection === 'wholesale' && (
             <SectionCard
               title="Wholesale Price List Link"
@@ -387,8 +561,6 @@ export default function AdminSettings() {
               </button>
             </SectionCard>
           )}
-        </div>
-      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { faShapes } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
 import { useCurrency } from '../context/CurrencyContext';
 import Pagination from '../components/Pagination';
+import LoadingBlock from '../components/LoadingBlock';
 
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
@@ -24,7 +25,13 @@ export default function MyOrders() {
     api.get('/orders/mine').then((res) => setOrders(res.data)).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="max-w-6xl mx-auto px-4 py-8 text-gray-700 dark:text-gray-300">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <LoadingBlock className="py-16" />
+      </div>
+    );
+  }
 
   if (orders.length === 0) {
     return (

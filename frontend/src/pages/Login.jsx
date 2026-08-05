@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useSettings } from '../context/SettingsContext';
 import PasswordInput from '../components/PasswordInput';
-import api from '../api/client';
-import { infoAlert } from '../lib/alert';
 import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
 
 export default function Login() {
   const { signIn } = useAuth();
-  const { settings } = useSettings();
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -29,28 +25,6 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function handleForgotPassword() {
-    let number = null;
-    try {
-      const { data } = await api.get('/whatsapp/contact');
-      number = data.number;
-    } catch {
-      number = null;
-    }
-    const storeName = settings?.store_name || 'City Cycle Stores Toys';
-    const waHref = number
-      ? `https://wa.me/${number}?text=${encodeURIComponent(
-          `Hi, I forgot my password for my ${storeName} account and need help resetting it.`
-        )}`
-      : null;
-    infoAlert(
-      'Forgot your password?',
-      waHref
-        ? `Self-service reset isn't available yet. <a href="${waHref}" target="_blank" rel="noopener noreferrer" class="text-wa-green-dark dark:text-wa-green font-semibold underline">Message us on WhatsApp</a> and our team will help you regain access.`
-        : "Self-service reset isn't available yet. Please contact our support team for help regaining access to your account."
-    );
   }
 
   return (
@@ -92,13 +66,9 @@ export default function Login() {
             />
             Remember me
           </label>
-          <button
-            type="button"
-            onClick={handleForgotPassword}
-            className="text-wa-green-dark dark:text-wa-green font-semibold hover:underline"
-          >
+          <Link to="/forgot-password" className="text-wa-green-dark dark:text-wa-green font-semibold hover:underline">
             Forgot password?
-          </button>
+          </Link>
         </div>
         <button type="submit" disabled={loading} className={`${authButtonClass} mt-2`}>
           {loading ? 'Logging in...' : 'Login'}

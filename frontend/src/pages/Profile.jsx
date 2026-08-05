@@ -13,9 +13,12 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import LoadingBlock from '../components/LoadingBlock';
 import { useWishlist } from '../context/WishlistContext';
 import api from '../api/client';
 import PasswordInput from '../components/PasswordInput';
+import AvatarUpload from '../components/AvatarUpload';
+import OtpInputModal from '../components/OtpInputModal';
 
 function StatCard({ icon, label, value }) {
   return (
@@ -99,7 +102,7 @@ function TextInput({ label, ...props }) {
 }
 
 export default function Profile() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, sendChangeEmailOtp, verifyChangeEmailOtp } = useAuth();
   const { count: cartCount } = useCart();
   const { count: wishlistCount } = useWishlist();
   const [me, setMe] = useState(null);
@@ -168,11 +171,20 @@ export default function Profile() {
     setError('');
     setSaving(true);
     try {
-      const payload = { name: personalForm.name, email: personalForm.email, phone: personalForm.phone };
+      // Email is handled separately below (OTP-gated) - name/phone/shop_name
+      // don't need verification and save immediately.
+      const payload = { name: personalForm.name, phone: personalForm.phone };
       if (isSeller) payload.shop_name = personalForm.shop_name;
       await updateProfile(payload);
       setMe((m) => ({ ...m, ...payload }));
-      setEditingSection(null);
+
+      const currentEmail = me?.email || '';
+      if (personalForm.email !== currentEmail) {
+        await sendChangeEmailOtp(personalForm.email);
+        setEditingSection('personal-email-otp');
+      } else {
+        setEditingSection(null);
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update profile');
     } finally {
@@ -215,7 +227,11 @@ export default function Profile() {
   }
 
   if (loading) {
-    return <div className="max-w-3xl mx-auto px-4 py-16 text-gray-700 dark:text-gray-300">Loading...</div>;
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <LoadingBlock className="py-16" />
+      </div>
+    );
   }
 
   if (isSuperAdmin) {
@@ -231,7 +247,6 @@ export default function Profile() {
     );
   }
 
-  const initial = (me?.name || 'U').trim().charAt(0).toUpperCase();
   const location = !isCustomer && me?.address ? me.address : me?.phone;
 
   return (
@@ -241,9 +256,14 @@ export default function Profile() {
       {error && <p className="text-red-600 text-sm">{error}</p>}
 
       <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-2xl shadow-sm dark:shadow-none p-5 sm:p-6 flex items-center gap-5">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-wa-teal to-wa-green flex items-center justify-center text-white text-2xl font-bold shrink-0">
-          {initial}
-        </div>
+        <AvatarUpload
+          src={me?.image}
+          onChange={async (url) => {
+            await updateProfile({ image: url });
+            setMe((m) => ({ ...m, image: url }));
+          }}
+          size="w-20 h-20"
+        />
         <div className="min-w-0">
           <p className="font-bold text-lg text-wa-green-dark dark:text-wa-green truncate">{me?.name}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">{user?.role}</p>
@@ -257,6 +277,21 @@ export default function Profile() {
         <StatCard icon={faBox} label="Total Products Ordered" value={totalOrdered} />
       </div>
 
+      {editingSection === 'personal-email-otp' ? (
+        <div className="bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-2xl shadow-sm dark:shadow-none p-5 sm:p-6">
+          <OtpInputModal
+            identifier={personalForm.email}
+            title="Verify your new email"
+            onVerify={(code) => verifyChangeEmailOtp(personalForm.email, code)}
+            onResend={() => sendChangeEmailOtp(personalForm.email)}
+            onVerified={() => {
+              setMe((m) => ({ ...m, email: personalForm.email }));
+              setEditingSection(null);
+            }}
+            onBack={() => setEditingSection('personal')}
+          />
+        </div>
+      ) : (
       <SectionCard
         icon={faUser}
         title="Personal Information"
@@ -310,6 +345,7 @@ export default function Profile() {
           </div>
         )}
       </SectionCard>
+      )}
 
       {!isCustomer && (
         <SectionCard

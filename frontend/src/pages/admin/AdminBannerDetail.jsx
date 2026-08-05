@@ -5,6 +5,7 @@ import { faPen, faTrash, faRotateRight } from '@fortawesome/free-solid-svg-icons
 import api from '../../api/client';
 import { confirmAction } from '../../lib/alert';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findBannerById(id) {
   const [active, inactive] = await Promise.all([
@@ -36,7 +37,7 @@ export default function AdminBannerDetail() {
     setBanner((b) => ({ ...b, is_active: 1 }));
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!banner) return <p className="text-gray-700 dark:text-gray-300">Banner not found.</p>;
 
   return (

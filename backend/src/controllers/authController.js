@@ -1,9 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
-const { buildSellerApplicationMessage } = require('./whatsappController');
-const { isValidEmail } = require('../utils/validators');
-const { getWhatsappNumber } = require('../utils/settings');
 
 function getSuperAdminCredentials() {
   return {
@@ -65,95 +62,6 @@ function signToken(user) {
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
-}
-
-async function register(req, res) {
-  try {
-    const { full_name, whatsapp_number, email, password } = req.body;
-    if (!full_name || !whatsapp_number || !password) {
-      return res.status(400).json({ message: 'Full name, WhatsApp number and password are required' });
-    }
-    if (email && !isValidEmail(email)) {
-      return res.status(400).json({ message: 'Enter a valid email address' });
-    }
-
-    const [existing] = await pool.query('SELECT id FROM customers WHERE whatsapp_number = ?', [whatsapp_number]);
-    if (existing.length > 0) {
-      return res.status(409).json({ message: 'An account with this WhatsApp number already exists' });
-    }
-    if (email) {
-      const [existingEmail] = await pool.query('SELECT id FROM customers WHERE email = ?', [email]);
-      if (existingEmail.length > 0) {
-        return res.status(409).json({ message: 'An account with this email already exists' });
-      }
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-    const [result] = await pool.query(
-      'INSERT INTO customers (name, whatsapp_number, email, password) VALUES (?, ?, ?, ?)',
-      [full_name, whatsapp_number, email || null, hashed]
-    );
-
-    const user = {
-      id: result.insertId,
-      name: full_name,
-      email: email || null,
-      phone: whatsapp_number,
-      role: 'Customer',
-      type: 'customer',
-    };
-    const token = signToken(user);
-    res.status(201).json({ token, user });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Registration failed' });
-  }
-}
-
-async function applySeller(req, res) {
-  try {
-    const { full_name, email, mobile, password, shop_name, city } = req.body;
-    if (!full_name || !email || !mobile || !password || !shop_name || !city) {
-      return res.status(400).json({ message: 'Full name, email, mobile, password, shop name and city are required' });
-    }
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ message: 'Enter a valid email address' });
-    }
-
-    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing.length > 0) {
-      return res.status(409).json({ message: 'An account with this email already exists' });
-    }
-    const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone = ?', [mobile]);
-    if (existingPhone.length > 0) {
-      return res.status(409).json({ message: 'An account with this mobile number already exists' });
-    }
-
-    const [[sellerRole]] = await pool.query('SELECT id FROM user_roles WHERE name = ?', ['Seller']);
-    if (!sellerRole) {
-      return res.status(500).json({ message: 'Seller role is not configured' });
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-    await pool.query(
-      'INSERT INTO users (name, email, password, phone, shop_name, city, role_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [full_name, email, hashed, mobile, shop_name, city, sellerRole.id, 'pending']
-    );
-
-    // Same pattern as order requests: the applicant opens WhatsApp on their
-    // own device with the message pre-filled, instead of a server-side bot
-    // send (which is unreliable - see whatsapp service ban risk).
-    const adminNumber = await getWhatsappNumber(pool);
-    const message = buildSellerApplicationMessage(full_name, email, mobile);
-
-    res.status(201).json({
-      message: 'Application sent to admin. After verification you will get a message, then you can use your Seller account.',
-      whatsapp: adminNumber ? { number: adminNumber, text: message } : null,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to submit seller application' });
-  }
 }
 
 async function login(req, res) {
@@ -250,7 +158,7 @@ async function me(req, res) {
     }
     if (req.user.type === 'customer') {
       const [rows] = await pool.query(
-        'SELECT id, name, email, whatsapp_number AS phone FROM customers WHERE id = ?',
+        'SELECT id, name, email, whatsapp_number AS phone, image FROM customers WHERE id = ?',
         [req.user.id]
       );
       if (rows.length === 0) return res.status(404).json({ message: 'Account not found' });
@@ -258,7 +166,7 @@ async function me(req, res) {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.phone, u.address, u.shop_name, u.city, r.name AS role
+      `SELECT u.id, u.name, u.email, u.phone, u.address, u.shop_name, u.city, u.image, r.name AS role
        FROM users u JOIN user_roles r ON r.id = u.role_id WHERE u.id = ?`,
       [req.user.id]
     );
@@ -276,7 +184,10 @@ async function updateProfile(req, res) {
       return res.status(400).json({ message: 'Profile editing is not available for the SuperAdmin account' });
     }
 
-    const { name, email, phone, address, shop_name, city, password } = req.body;
+    // Email is deliberately not editable here - changing it goes through the
+    // OTP-verified /auth/change-email/* endpoints instead, so an updated
+    // email can never be persisted without proving control of it.
+    const { name, phone, address, shop_name, city, image, password } = req.body;
     const hashed = password ? await bcrypt.hash(password, 10) : null;
 
     if (req.user.type === 'customer') {
@@ -284,7 +195,7 @@ async function updateProfile(req, res) {
       const values = [];
       if (name !== undefined) { fields.push('name = ?'); values.push(name); }
       if (phone !== undefined) { fields.push('whatsapp_number = ?'); values.push(phone); }
-      if (email !== undefined) { fields.push('email = ?'); values.push(email || null); }
+      if (image !== undefined) { fields.push('image = ?'); values.push(image || null); }
       if (hashed) { fields.push('password = ?'); values.push(hashed); }
       if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update' });
       values.push(req.user.id);
@@ -299,7 +210,7 @@ async function updateProfile(req, res) {
     if (address !== undefined) { fields.push('address = ?'); values.push(address || null); }
     if (shop_name !== undefined) { fields.push('shop_name = ?'); values.push(shop_name || null); }
     if (city !== undefined) { fields.push('city = ?'); values.push(city || null); }
-    if (email !== undefined) { fields.push('email = ?'); values.push(email); }
+    if (image !== undefined) { fields.push('image = ?'); values.push(image || null); }
     if (hashed) { fields.push('password = ?'); values.push(hashed); }
     if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update' });
     values.push(req.user.id);
@@ -314,4 +225,4 @@ async function updateProfile(req, res) {
   }
 }
 
-module.exports = { register, login, me, applySeller, updateProfile };
+module.exports = { login, me, updateProfile, signToken };

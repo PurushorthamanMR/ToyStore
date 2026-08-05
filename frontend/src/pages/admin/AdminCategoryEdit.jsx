@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { useDuplicateCheck } from '../../lib/useDuplicateCheck';
 import AdminDetailLayout from '../../components/AdminDetailLayout';
 import CategoryForm from './forms/CategoryForm';
+import LoadingBlock from '../../components/LoadingBlock';
 
 async function findCategoryById(id) {
   const [active, inactive] = await Promise.all([
@@ -52,7 +53,7 @@ export default function AdminCategoryEdit() {
     }
   }
 
-  if (loading) return <p className="text-gray-700 dark:text-gray-300">Loading...</p>;
+  if (loading) return <LoadingBlock className="py-16" />;
   if (!form) return <p className="text-gray-700 dark:text-gray-300">Category not found.</p>;
 
   return (

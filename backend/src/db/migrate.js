@@ -459,6 +459,30 @@ async function ensureLegalContent(connection) {
   );
 }
 
+// Google Fonts CSS2 "family" query values for the 10 starter fonts (Admin
+// Settings > Font Style). Store owners can add more by pasting a Google
+// Fonts <link> snippet, parsed by utils/googleFonts.js.
+const DEFAULT_FONTS = [
+  ['Archivo Narrow', 'Archivo+Narrow:ital,wght@0,400..700;1,400..700'],
+  ['Cormorant Garamond', 'Cormorant+Garamond:ital,wght@0,300..700;1,300..700'],
+  ['DM Sans', 'DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000'],
+  ['Libertinus Math', 'Libertinus+Math'],
+  ['Merriweather', 'Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900'],
+  ['Montserrat', 'Montserrat:ital,wght@0,100..900;1,100..900'],
+  ['Playfair Display', 'Playfair+Display:ital,wght@0,400..900;1,400..900'],
+  ['Roboto Condensed', 'Roboto+Condensed:ital,wght@0,100..900;1,100..900'],
+  ['Share Tech', 'Share+Tech'],
+  ['Titillium Web', 'Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700'],
+];
+
+async function ensureDefaultFonts(connection) {
+  const [[{ count }]] = await connection.query('SELECT COUNT(*) as count FROM fonts');
+  if (count > 0) return;
+  for (const [name, family_param] of DEFAULT_FONTS) {
+    await connection.query('INSERT INTO fonts (name, family_param) VALUES (?, ?)', [name, family_param]);
+  }
+}
+
 async function migrate() {
   const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
 
@@ -491,6 +515,8 @@ async function migrate() {
     await migrateOrderItemsReturnedQuantity(connection, DB_NAME);
     await addColumnIfMissing(connection, DB_NAME, 'users', 'shop_name', 'VARCHAR(150)', 'address');
     await addColumnIfMissing(connection, DB_NAME, 'users', 'city', 'VARCHAR(100)', 'shop_name');
+    await addColumnIfMissing(connection, DB_NAME, 'users', 'image', 'VARCHAR(255)', 'city');
+    await addColumnIfMissing(connection, DB_NAME, 'customers', 'image', 'VARCHAR(255)', 'email');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'store_logo', 'VARCHAR(255)', 'store_short_name');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'address', 'VARCHAR(255)', 'whatsapp_number');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'email', 'VARCHAR(150)', 'address');
@@ -498,6 +524,13 @@ async function migrate() {
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'terms_content', 'LONGTEXT', 'wholesale_token');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'return_policy_content', 'LONGTEXT', 'terms_content');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'privacy_policy_content', 'LONGTEXT', 'return_policy_content');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_host', 'VARCHAR(150)', 'privacy_policy_content');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_port', 'INT', 'smtp_host');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_user', 'VARCHAR(150)', 'smtp_port');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_pass', 'VARCHAR(255)', 'smtp_user');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'email_from', 'VARCHAR(150)', 'smtp_pass');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'active_font', "VARCHAR(150) NOT NULL DEFAULT 'Archivo Narrow'", 'email_from');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'store_icon', 'VARCHAR(255)', 'store_logo');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     await connection.query(schemaSql);
@@ -510,6 +543,7 @@ async function migrate() {
     await ensureSettingsRow(connection);
     await ensureWholesaleToken(connection);
     await ensureLegalContent(connection);
+    await ensureDefaultFonts(connection);
 
     console.log(`[db] Database "${DB_NAME}" and tables are ready.`);
   } finally {
