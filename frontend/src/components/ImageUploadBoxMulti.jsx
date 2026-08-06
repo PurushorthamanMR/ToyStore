@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCamera, faXmark } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
+import MediaImg from './MediaImg';
 
 const MAX_FILE_SIZE_MB = 10;
 
@@ -48,7 +49,7 @@ export default function ImageUploadBoxMulti({ value = [], onChange }) {
       <div className="flex flex-wrap gap-2 mb-2">
         {value.map((img) => (
           <div key={img} className="relative">
-            <img src={img} alt="Upload preview" className="h-16 w-16 object-cover rounded" />
+            <MediaImg src={img} alt="Upload preview" className="h-16 w-16 object-cover rounded" />
             <button
               type="button"
               onClick={() => removeImage(img)}

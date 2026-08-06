@@ -170,8 +170,9 @@ CREATE TABLE IF NOT EXISTS settings (
   emailjs_reply_to VARCHAR(150),
   emailjs_template_otp VARCHAR(100),
   emailjs_template_notify VARCHAR(100),
-  drive_client_email VARCHAR(255),
-  drive_private_key TEXT,
+  drive_client_id VARCHAR(255),
+  drive_client_secret VARCHAR(255),
+  drive_refresh_token TEXT,
   drive_folder_id VARCHAR(150),
   active_font VARCHAR(150) NOT NULL DEFAULT 'Archivo Narrow',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

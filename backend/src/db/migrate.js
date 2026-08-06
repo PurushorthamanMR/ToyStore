@@ -565,10 +565,13 @@ async function migrate() {
     }
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_template_notify', 'VARCHAR(100)', 'emailjs_template_otp');
 
-    // Local disk -> Google Drive image uploads.
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_client_email', 'VARCHAR(255)', 'emailjs_template_notify');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_private_key', 'TEXT', 'drive_client_email');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_folder_id', 'VARCHAR(150)', 'drive_private_key');
+    // Local disk -> Google Drive image uploads (OAuth with a free Gmail account).
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'drive_client_email');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'drive_private_key');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_client_id', 'VARCHAR(255)', 'emailjs_template_notify');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_client_secret', 'VARCHAR(255)', 'drive_client_id');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_refresh_token', 'TEXT', 'drive_client_secret');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_folder_id', 'VARCHAR(150)', 'drive_refresh_token');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     await connection.query(schemaSql);

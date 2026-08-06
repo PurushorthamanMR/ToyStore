@@ -7,15 +7,22 @@ async function checkCustomerField(req, res) {
     if (!['email', 'phone'].includes(field) || !value || !value.trim()) {
       return res.json({ available: true });
     }
+    const trimmed = value.trim();
     const column = field === 'phone' ? 'whatsapp_number' : 'email';
-    const params = [value.trim()];
+
+    const params = [trimmed];
     let sql = `SELECT id FROM customers WHERE ${column} = ?`;
     if (excludeId) {
       sql += ' AND id != ?';
       params.push(excludeId);
     }
     const [rows] = await pool.query(sql, params);
-    res.json({ available: rows.length === 0 });
+
+    // Email/phone must be unique across staff/sellers too, not just other
+    // customers - otherwise the same number could sit on both account types.
+    const [userRows] = await pool.query(`SELECT id FROM users WHERE ${field} = ?`, [trimmed]);
+
+    res.json({ available: rows.length === 0 && userRows.length === 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to check availability' });

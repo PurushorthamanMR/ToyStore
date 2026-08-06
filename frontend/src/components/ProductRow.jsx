@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { fadeUpItem } from '../lib/motion';
+import { resolveMediaUrl } from '../lib/mediaUrl';
 
 export default function ProductRow({ product }) {
   const { items, addToCart, updateQuantity, removeFromCart } = useCart();
@@ -50,10 +51,11 @@ export default function ProductRow({ product }) {
         className="flex items-center gap-3 py-3 border-b border-gray-100 dark:border-neutral-800 last:border-b-0"
       >
         <img
-          src={product.image}
+          src={resolveMediaUrl(product.image)}
           alt={product.name}
           className="w-16 h-16 rounded-lg object-cover shrink-0 bg-gray-100 dark:bg-neutral-800"
           loading="lazy"
+          referrerPolicy="no-referrer"
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">

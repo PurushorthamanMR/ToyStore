@@ -42,8 +42,7 @@ export function successAlert(title, text) {
     title,
     text,
     icon: 'success',
-    timer: 1800,
-    showConfirmButton: false,
+    confirmButtonText: 'OK',
   });
 }
 

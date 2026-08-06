@@ -24,8 +24,16 @@ export default function Login() {
         // First-time-use nudge (Admin only - SuperAdmin is the developer role
         // and always goes straight to the Dashboard): send them to finish
         // initial store setup until every Settings section is filled in.
-        const setupStatus = await api.get('/settings/setup-status').then((res) => res.data).catch(() => null);
-        navigate(setupStatus && setupStatus.percent !== 100 ? '/admin/settings?tab=general' : '/admin');
+        // Fail closed: if setup-status can't be loaded, treat as incomplete
+        // so they never land on the full admin panel by accident.
+        let setupComplete = false;
+        try {
+          const { data } = await api.get('/settings/setup-status');
+          setupComplete = data?.percent === 100;
+        } catch {
+          setupComplete = false;
+        }
+        navigate(setupComplete ? '/admin' : '/admin/settings?tab=drive');
       } else if (user.role === 'SuperAdmin') {
         navigate('/admin');
       } else {

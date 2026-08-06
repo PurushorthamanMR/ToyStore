@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCopy,
@@ -11,6 +11,7 @@ import {
   faFileContract,
   faLink,
   faEnvelope,
+  faBook,
 } from '@fortawesome/free-solid-svg-icons';
 import { faGoogleDrive } from '@fortawesome/free-brands-svg-icons';
 import api from '../../api/client';
@@ -18,6 +19,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useSetupStatus } from '../../context/SetupStatusContext';
 import { useUnsavedChanges } from '../../context/UnsavedChangesContext';
 import { successAlert, confirmAction, errorAlert } from '../../lib/alert';
+import { copyText } from '../../lib/clipboard';
 import ImageUploadBox from '../../components/ImageUploadBox';
 import LoadingBlock from '../../components/LoadingBlock';
 
@@ -29,11 +31,24 @@ export const SETTINGS_SECTIONS = [
   { key: 'contact', label: 'Contact', icon: faPhone },
   { key: 'appearance', label: 'Appearance', icon: faPalette },
   { key: 'legal', label: 'Legal Pages', icon: faFileContract },
-  { key: 'email', label: 'Email (EmailJS)', icon: faEnvelope },
   { key: 'drive', label: 'Google Drive', icon: faGoogleDrive },
+  { key: 'email', label: 'Email (EmailJS)', icon: faEnvelope },
   { key: 'wholesale', label: 'Wholesale Link', icon: faLink },
 ];
 const SECTIONS = SETTINGS_SECTIONS;
+
+function ConfigGuideLink({ section }) {
+  return (
+    <Link
+      to={`/admin/documentation?tab=config&section=${section}`}
+      className="inline-flex items-center gap-1.5 text-xs font-semibold text-wa-green hover:text-wa-green-dark dark:hover:text-wa-green"
+      title="Open Configuration Guide"
+    >
+      <FontAwesomeIcon icon={faBook} className="text-[10px]" />
+      Guide
+    </Link>
+  );
+}
 
 function Label({ children, hint }) {
   return (
@@ -121,7 +136,7 @@ export default function AdminSettings() {
   const { settings, refreshSettings } = useSettings();
   const { refreshSetupStatus } = useSetupStatus();
   const { setHasUnsavedChanges } = useUnsavedChanges();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedSection = searchParams.get('tab');
   const activeSection = SECTIONS.some((s) => s.key === requestedSection) ? requestedSection : 'general';
   const [form, setForm] = useState(null);
@@ -129,6 +144,7 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const editSnapshotRef = useRef(null);
+  const driveOauthHandledRef = useRef(false);
   const [wholesaleToken, setWholesaleToken] = useState(null);
   const [regenerating, setRegenerating] = useState(false);
   const [emailForm, setEmailForm] = useState(null);
@@ -148,6 +164,46 @@ export default function AdminSettings() {
     api.get('/settings/drive').then((res) => setDriveForm(res.data));
     api.get('/fonts').then((res) => setFonts(res.data));
   }, []);
+
+  // OAuth callback lands on /admin/settings?tab=drive&drive=connected|error
+  useEffect(() => {
+    const driveStatus = searchParams.get('drive');
+    if (!driveStatus || driveOauthHandledRef.current) return;
+    driveOauthHandledRef.current = true;
+
+    const rawReason = searchParams.get('reason') || '';
+    let reason = rawReason;
+    try {
+      reason = decodeURIComponent(rawReason);
+    } catch {
+      // keep raw
+    }
+
+    (async () => {
+      if (driveStatus === 'connected') {
+        await successAlert('Google Drive connected', 'Uploads will now go to your Google Drive folder.');
+        try {
+          const { data } = await api.get('/settings/drive');
+          setDriveForm(data);
+        } catch {
+          // Status text will refresh on next visit.
+        }
+        await refreshSetupStatus();
+      } else if (driveStatus === 'error') {
+        const friendly =
+          /access_denied/i.test(reason)
+            ? 'Google blocked sign-in. Add this Gmail as a Test user under Google Cloud → OAuth consent screen, then try again.'
+            : reason || 'Could not complete Google sign-in.';
+        await errorAlert('Google Drive connection failed', friendly);
+      }
+
+      const next = new URLSearchParams(searchParams);
+      next.delete('drive');
+      next.delete('reason');
+      if (!next.get('tab')) next.set('tab', 'drive');
+      setSearchParams(next, { replace: true });
+    })();
+  }, [searchParams, refreshSetupStatus, setSearchParams]);
 
   // Only takes the saved value once, so the dropdown isn't yanked back to
   // the saved font while the admin is mid-preview of a different one.
@@ -207,7 +263,7 @@ export default function AdminSettings() {
       text: 'This will update the settings live across the site.',
       confirmText: 'Save',
     });
-    if (!confirmed) return;
+    if (!confirmed) return false;
 
     setSaving(true);
     try {
@@ -216,8 +272,10 @@ export default function AdminSettings() {
       await refreshSetupStatus();
       setEditing(false);
       successAlert('Settings saved', 'The changes have been applied across the site.');
+      return true;
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save settings');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -285,13 +343,54 @@ export default function AdminSettings() {
     });
   }
 
-  function handleDriveSubmit(e) {
+  async function handleDriveSubmit(e) {
     e.preventDefault();
-    saveFields({
-      drive_client_email: driveForm.drive_client_email,
-      drive_private_key: driveForm.drive_private_key,
+    const ok = await saveFields({
+      drive_client_id: driveForm.drive_client_id,
+      drive_client_secret: driveForm.drive_client_secret,
       drive_folder_id: driveForm.drive_folder_id,
     });
+    if (ok) {
+      const { data } = await api.get('/settings/drive');
+      setDriveForm(data);
+    }
+  }
+
+  async function connectDriveAccount() {
+    setError('');
+    try {
+      // Persist Client ID / Secret / Folder ID first so OAuth can use them.
+      if (editing) {
+        await api.put('/settings', {
+          drive_client_id: driveForm.drive_client_id,
+          drive_client_secret: driveForm.drive_client_secret,
+          drive_folder_id: driveForm.drive_folder_id,
+        });
+        await refreshSetupStatus();
+      }
+      const { data } = await api.get('/settings/drive/oauth/start');
+      window.location.href = data.url;
+    } catch (err) {
+      errorAlert('Connect failed', err.response?.data?.message || 'Could not start Google sign-in.');
+    }
+  }
+
+  async function disconnectDriveAccount() {
+    const confirmed = await confirmAction({
+      title: 'Disconnect Google Drive?',
+      text: "Uploads will fall back to this server's local disk until you connect again.",
+      confirmText: 'Disconnect',
+    });
+    if (!confirmed) return;
+    try {
+      await api.put('/settings', { drive_refresh_token: '' });
+      const { data } = await api.get('/settings/drive');
+      setDriveForm(data);
+      await refreshSetupStatus();
+      successAlert('Disconnected', 'Google Drive is no longer connected.');
+    } catch (err) {
+      errorAlert('Failed', err.response?.data?.message || 'Could not disconnect Google Drive.');
+    }
   }
 
   function handleLegalSubmit(e) {
@@ -305,9 +404,10 @@ export default function AdminSettings() {
 
   const wholesaleLink = wholesaleToken ? `${window.location.origin}/wholesale-view/${wholesaleToken}` : '';
 
-  function copyWholesaleLink() {
-    navigator.clipboard.writeText(wholesaleLink);
-    successAlert('Copied', 'The wholesale link has been copied to your clipboard.');
+  async function copyWholesaleLink() {
+    const ok = await copyText(wholesaleLink);
+    if (ok) successAlert('Copied', 'The wholesale link has been copied to your clipboard.');
+    else errorAlert('Copy failed', 'Could not copy to the clipboard on this device.');
   }
 
   async function regenerateWholesaleLink() {
@@ -618,8 +718,13 @@ export default function AdminSettings() {
               <form id="email-form" onSubmit={handleEmailSubmit}>
                 <SectionCard
                   title="Email (EmailJS)"
-                  description="Used to send verification codes for signup, seller applications, and password resets, plus welcome and seller-status emails. Create a free account at emailjs.com, add an Email Service, and create 2 templates: a Code template (its Subject set to {{subject}}, body using {{to_name}}/{{code}}/{{expires_minutes}}/{{store_name}}) and a Notify template (its Subject set to {{subject}}, body using {{to_name}}/{{message}}/{{store_name}}) — both with To Email set to {{to_email}}. Leave a Template ID blank to skip that email (verification codes print to the server console instead of emailing when unconfigured)."
-                  headerAction={!editing && <EditButton onClick={() => startEdit(emailForm)} />}
+                  description="Used to send verification codes for signup, seller applications, and password resets, plus welcome and seller-status emails. Create a free account at emailjs.com, add an Email Service, enable Account → Security → “Allow API requests from non-browser applications”, then create 2 templates: a Code template (Subject {{subject}}, body {{to_name}}/{{code}}/{{expires_minutes}}/{{store_name}}) and a Notify template (Subject {{subject}}, body {{to_name}}/{{message}}/{{store_name}}) — both with To Email {{to_email}}. Paste Service ID, Public Key, Private Key, and both Template IDs below. Leave a Template ID blank to skip that email (OTP codes print to the server console instead)."
+                  headerAction={
+                    <div className="flex items-center gap-2">
+                      <ConfigGuideLink section="email" />
+                      {!editing && <EditButton onClick={() => startEdit(emailForm)} />}
+                    </div>
+                  }
                 >
                   <div>
                     <Label hint="(EmailJS → Email Services)">Service ID</Label>
@@ -692,37 +797,87 @@ export default function AdminSettings() {
               <form id="drive-form" onSubmit={handleDriveSubmit}>
                 <SectionCard
                   title="Google Drive"
-                  description="Used to store every image uploaded in the app (products, categories, banners, blogs, store logo, profile pictures) instead of saving them on this server's disk. Create a Google Cloud Service Account, put a folder in a Shared Drive (Google Workspace), add the Service Account as Content Manager, and paste the 3 values below. Personal My Drive folders will fail — leave blank to keep saving uploads to this server's local disk instead."
-                  headerAction={!editing && <EditButton onClick={() => startEdit(driveForm)} />}
+                  description="Store uploaded images in your free Gmail Google Drive instead of this server's disk. Create an OAuth client in Google Cloud, add your Gmail as a Test user on the OAuth consent screen, paste Client ID / Secret / Folder ID below, then Connect Google Account. Leave blank to keep saving uploads locally."
+                  headerAction={
+                    <div className="flex items-center gap-2">
+                      <ConfigGuideLink section="drive" />
+                      {!editing && <EditButton onClick={() => startEdit(driveForm)} />}
+                    </div>
+                  }
                 >
                   <div>
-                    <Label hint="(Google Cloud Console → IAM & Admin → Service Accounts)">Service Account Email</Label>
+                    <Label hint="(copy this into Google Cloud → Authorized redirect URIs)">Redirect URI</Label>
+                    <div className="flex gap-2">
+                      <input
+                        readOnly
+                        value={driveForm.drive_redirect_uri || ''}
+                        className={`${inputClass} opacity-60`}
+                      />
+                      <button
+                        type="button"
+                        title="Copy"
+                        onClick={async () => {
+                          const ok = await copyText(driveForm.drive_redirect_uri || '');
+                          if (ok) successAlert('Copied', 'Redirect URI copied to clipboard.');
+                          else errorAlert('Copy failed', 'Could not copy to the clipboard on this device.');
+                        }}
+                        className="shrink-0 w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-neutral-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-800 touch-manipulation"
+                      >
+                        <FontAwesomeIcon icon={faCopy} />
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label hint="(Google Cloud Console → APIs & Services → Credentials → OAuth client)">Client ID</Label>
                     <input
                       disabled={!editing}
-                      value={driveForm.drive_client_email || ''}
-                      onChange={(e) => setDriveForm({ ...driveForm, drive_client_email: e.target.value })}
+                      value={driveForm.drive_client_id || ''}
+                      onChange={(e) => setDriveForm({ ...driveForm, drive_client_id: e.target.value })}
                       className={`${inputClass} disabled:opacity-60`}
                     />
                   </div>
                   <div>
-                    <Label hint="(from the downloaded JSON key file, including BEGIN/END lines)">Private Key</Label>
-                    <textarea
-                      rows={6}
+                    <Label hint="(from the same OAuth client)">Client Secret</Label>
+                    <input
+                      type="password"
                       autoComplete="new-password"
                       disabled={!editing}
-                      value={driveForm.drive_private_key || ''}
-                      onChange={(e) => setDriveForm({ ...driveForm, drive_private_key: e.target.value })}
-                      className={`${inputClass} font-mono text-xs disabled:opacity-60`}
+                      value={driveForm.drive_client_secret || ''}
+                      onChange={(e) => setDriveForm({ ...driveForm, drive_client_secret: e.target.value })}
+                      className={`${inputClass} disabled:opacity-60`}
                     />
                   </div>
                   <div>
-                    <Label hint="(Shared Drive folder ID; Service Account must be Content Manager)">Folder ID</Label>
+                    <Label hint="(from drive.google.com/drive/folders/… — a folder you own)">Folder ID</Label>
                     <input
                       disabled={!editing}
                       value={driveForm.drive_folder_id || ''}
                       onChange={(e) => setDriveForm({ ...driveForm, drive_folder_id: e.target.value })}
                       className={`${inputClass} disabled:opacity-60`}
                     />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 flex-1 min-w-[12rem]">
+                      {driveForm.drive_connected
+                        ? 'Google account connected — uploads will use Drive.'
+                        : 'Not connected yet — save Client ID & Secret, then connect with Gmail.'}
+                    </p>
+                    {driveForm.drive_connected ? (
+                      <button
+                        type="button"
+                        onClick={disconnectDriveAccount}
+                        className="bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-700 dark:text-gray-300 font-semibold text-sm px-3.5 py-2 rounded-md"
+                      >
+                        Disconnect
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={connectDriveAccount}
+                      className="bg-wa-green hover:bg-wa-green-dark text-white font-semibold text-sm px-3.5 py-2 rounded-md"
+                    >
+                      {driveForm.drive_connected ? 'Reconnect Google Account' : 'Connect Google Account'}
+                    </button>
                   </div>
                   {editing && <FloatingSaveCancel saving={saving} onCancel={() => cancelEdit(setDriveForm)} formId="drive-form" />}
                 </SectionCard>

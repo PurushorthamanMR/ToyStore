@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { isValidEmail } = require('../utils/validators');
-const { sendSellerApprovedEmail } = require('../services/emailService');
+const { sendSellerApprovedEmail, sendSellerRejectedEmail } = require('../services/emailService');
 
 const ASSIGNABLE_ROLES = ['Seller', 'Admin'];
 
@@ -12,14 +12,22 @@ async function checkUserField(req, res) {
     if (!['email', 'phone'].includes(field) || !value || !value.trim()) {
       return res.json({ available: true });
     }
-    const params = [value.trim()];
+    const trimmed = value.trim();
+
+    const params = [trimmed];
     let sql = `SELECT id FROM users WHERE ${field} = ?`;
     if (excludeId) {
       sql += ' AND id != ?';
       params.push(excludeId);
     }
     const [rows] = await pool.query(sql, params);
-    res.json({ available: rows.length === 0 });
+
+    // Email/phone must be unique across customers too, not just other staff/sellers -
+    // otherwise the same number could sit on both a customer and a seller account.
+    const customerColumn = field === 'phone' ? 'whatsapp_number' : 'email';
+    const [customerRows] = await pool.query(`SELECT id FROM customers WHERE ${customerColumn} = ?`, [trimmed]);
+
+    res.json({ available: rows.length === 0 && customerRows.length === 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to check availability' });
@@ -125,7 +133,11 @@ async function approveUser(req, res) {
 async function rejectUser(req, res) {
   try {
     const { id } = req.params;
+    const [[user]] = await pool.query('SELECT name, email, shop_name FROM users WHERE id = ?', [id]);
     await pool.query(`UPDATE users SET status = 'rejected', is_active = 0 WHERE id = ?`, [id]);
+    if (user?.email) {
+      await sendSellerRejectedEmail(user.email, user.name, user.shop_name);
+    }
     res.json({ message: 'User rejected' });
   } catch (err) {
     console.error(err);

@@ -93,11 +93,17 @@ async function sendRegisterOtp(req, res) {
       return res.status(400).json({ message: 'Enter a valid email address' });
     }
 
-    const [existingPhone] = await pool.query('SELECT id FROM customers WHERE whatsapp_number = ?', [whatsapp_number]);
+    const [existingPhone] = await pool.query(
+      'SELECT id FROM customers WHERE whatsapp_number = ? UNION SELECT id FROM users WHERE phone = ?',
+      [whatsapp_number, whatsapp_number]
+    );
     if (existingPhone.length > 0) {
       return res.status(409).json({ message: 'An account with this WhatsApp number already exists' });
     }
-    const [existingEmail] = await pool.query('SELECT id FROM customers WHERE email = ?', [email]);
+    const [existingEmail] = await pool.query(
+      'SELECT id FROM customers WHERE email = ? UNION SELECT id FROM users WHERE email = ?',
+      [email, email]
+    );
     if (existingEmail.length > 0) {
       return res.status(409).json({ message: 'An account with this email already exists' });
     }
@@ -120,11 +126,17 @@ async function verifyRegisterOtp(req, res) {
     const { payload } = await verifyOtp(email, 'register_customer', code);
     if (!payload) return res.status(400).json({ message: 'Verification session expired. Please register again.' });
 
-    const [existingPhone] = await pool.query('SELECT id FROM customers WHERE whatsapp_number = ?', [payload.whatsapp_number]);
+    const [existingPhone] = await pool.query(
+      'SELECT id FROM customers WHERE whatsapp_number = ? UNION SELECT id FROM users WHERE phone = ?',
+      [payload.whatsapp_number, payload.whatsapp_number]
+    );
     if (existingPhone.length > 0) {
       return res.status(409).json({ message: 'An account with this WhatsApp number already exists' });
     }
-    const [existingEmail] = await pool.query('SELECT id FROM customers WHERE email = ?', [payload.email]);
+    const [existingEmail] = await pool.query(
+      'SELECT id FROM customers WHERE email = ? UNION SELECT id FROM users WHERE email = ?',
+      [payload.email, payload.email]
+    );
     if (existingEmail.length > 0) {
       return res.status(409).json({ message: 'An account with this email already exists' });
     }
@@ -139,6 +151,7 @@ async function verifyRegisterOtp(req, res) {
       name: payload.full_name,
       email: payload.email,
       phone: payload.whatsapp_number,
+      image: payload.image,
       role: 'Customer',
       type: 'customer',
     };
@@ -162,11 +175,17 @@ async function sendSellerOtp(req, res) {
       return res.status(400).json({ message: 'Enter a valid email address' });
     }
 
-    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+    const [existing] = await pool.query(
+      'SELECT id FROM users WHERE email = ? UNION SELECT id FROM customers WHERE email = ?',
+      [email, email]
+    );
     if (existing.length > 0) {
       return res.status(409).json({ message: 'An account with this email already exists' });
     }
-    const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone = ?', [mobile]);
+    const [existingPhone] = await pool.query(
+      'SELECT id FROM users WHERE phone = ? UNION SELECT id FROM customers WHERE whatsapp_number = ?',
+      [mobile, mobile]
+    );
     if (existingPhone.length > 0) {
       return res.status(409).json({ message: 'An account with this mobile number already exists' });
     }
@@ -189,11 +208,17 @@ async function verifySellerOtp(req, res) {
     const { payload } = await verifyOtp(email, 'register_seller', code);
     if (!payload) return res.status(400).json({ message: 'Verification session expired. Please apply again.' });
 
-    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [payload.email]);
+    const [existing] = await pool.query(
+      'SELECT id FROM users WHERE email = ? UNION SELECT id FROM customers WHERE email = ?',
+      [payload.email, payload.email]
+    );
     if (existing.length > 0) {
       return res.status(409).json({ message: 'An account with this email already exists' });
     }
-    const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone = ?', [payload.mobile]);
+    const [existingPhone] = await pool.query(
+      'SELECT id FROM users WHERE phone = ? UNION SELECT id FROM customers WHERE whatsapp_number = ?',
+      [payload.mobile, payload.mobile]
+    );
     if (existingPhone.length > 0) {
       return res.status(409).json({ message: 'An account with this mobile number already exists' });
     }

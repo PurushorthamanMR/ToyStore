@@ -1,13 +1,43 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
 
+const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+
+function buildOAuthClient(config) {
+  return new google.auth.OAuth2(
+    config.drive_client_id,
+    config.drive_client_secret,
+    config.redirectUri
+  );
+}
+
 function buildDriveClient(config) {
-  const auth = new google.auth.JWT({
-    email: config.drive_client_email,
-    key: String(config.drive_private_key || '').replace(/\\n/g, '\n'),
-    scopes: ['https://www.googleapis.com/auth/drive'],
+  const oauth2 = buildOAuthClient(config);
+  oauth2.setCredentials({ refresh_token: config.drive_refresh_token });
+  return google.drive({ version: 'v3', auth: oauth2 });
+}
+
+function getAuthUrl(config, state) {
+  const oauth2 = buildOAuthClient(config);
+  return oauth2.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: DRIVE_SCOPES,
+    state,
   });
-  return google.drive({ version: 'v3', auth });
+}
+
+async function exchangeCode(config, code) {
+  const oauth2 = buildOAuthClient(config);
+  const { tokens } = await oauth2.getToken(code);
+  if (!tokens.refresh_token) {
+    const error = new Error(
+      'Google did not return a refresh token. Revoke this app at myaccount.google.com/permissions, then connect again.'
+    );
+    error.status = 400;
+    throw error;
+  }
+  return tokens.refresh_token;
 }
 
 /** Accept a raw ID or a full Drive folder URL. */
@@ -36,19 +66,19 @@ async function uploadFile(config, buffer, filename, mimetype) {
       supportsAllDrives: true,
     });
 
-    return `https://drive.google.com/uc?export=view&id=${file.id}`;
+    return `https://drive.google.com/thumbnail?id=${file.id}&sz=w2000`;
   } catch (err) {
     const detail = err?.errors?.[0]?.message || err?.message || String(err);
     let friendly;
-    if (/storage quota|do not have storage quota/i.test(detail)) {
+    if (/invalid_grant|Token has been expired or revoked/i.test(detail)) {
       friendly =
-        'Google Drive upload failed: Service Accounts cannot upload into a personal My Drive folder. Create a Shared Drive (Google Workspace), add the Service Account as Content Manager, put a folder inside it, and use that folder\'s ID.';
-    } else if (/File not found|insufficient permission/i.test(detail)) {
+        'Google Drive upload failed: the connection expired. Open Settings → Google Drive and click Connect Google Account again.';
+    } else if (/File not found|insufficient permission|notFound/i.test(detail)) {
       friendly =
-        'Google Drive upload failed: the folder was not found or is not shared with the Service Account email. Use a Shared Drive folder and grant the Service Account Content Manager access.';
-    } else if (/invalid_grant|error:0909006C|DECODER routines/i.test(detail)) {
+        'Google Drive upload failed: the folder was not found or your Google account cannot write to it. Check the Folder ID and that you own or can edit that folder.';
+    } else if (/storage quota/i.test(detail)) {
       friendly =
-        'Google Drive upload failed: the Private Key looks invalid. Paste the full private key from the JSON key file, including the BEGIN/END lines.';
+        'Google Drive upload failed: your Google account storage is full. Free up space in Drive or use another Google account.';
     } else {
       friendly = `Google Drive upload failed: ${detail}`;
     }
@@ -58,4 +88,4 @@ async function uploadFile(config, buffer, filename, mimetype) {
   }
 }
 
-module.exports = { uploadFile };
+module.exports = { uploadFile, getAuthUrl, exchangeCode, DRIVE_SCOPES };

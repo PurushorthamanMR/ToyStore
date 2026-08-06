@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { fadeUpItem } from '../lib/motion';
+import { resolveMediaUrl } from '../lib/mediaUrl';
 
 export default function ProductCard({ product }) {
   const { items, addToCart, updateQuantity, removeFromCart } = useCart();
@@ -51,10 +52,11 @@ export default function ProductCard({ product }) {
       <div className="relative">
         <Link to={`/products/${product.slug}`}>
           <motion.img
-            src={product.image}
+            src={resolveMediaUrl(product.image)}
             alt={product.name}
             className="w-full h-40 object-cover"
             loading="lazy"
+            referrerPolicy="no-referrer"
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.3 }}
           />

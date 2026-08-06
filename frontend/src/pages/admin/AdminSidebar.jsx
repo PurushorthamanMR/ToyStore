@@ -30,6 +30,7 @@ import { confirmAction } from '../../lib/alert';
 import api from '../../api/client';
 import CustomScrollbar from '../../components/CustomScrollbar';
 import { SETTINGS_SECTIONS } from './AdminSettings';
+import { DOCUMENTATION_TABS } from './AdminDocumentation';
 
 // Shared by every navigation trigger below (top-level links, Settings sub-tabs,
 // Back to Home, Logout) - lets an in-progress Settings edit block leaving
@@ -107,6 +108,12 @@ function buildSections({ pendingCount, lowStockCount, pendingUsersCount, canMana
 }
 
 const SETTINGS_ITEM = { to: '/admin/settings', label: 'Settings', icon: faGear, children: SETTINGS_SECTIONS };
+const DOCUMENTATION_ITEM = {
+  to: '/admin/documentation',
+  label: 'Documentation',
+  icon: faBook,
+  children: DOCUMENTATION_TABS,
+};
 
 function SidebarLink({ to, label, icon, badge, onClick }) {
   const navigate = useNavigate();
@@ -159,7 +166,7 @@ function SidebarExpandableLink({ to, label, icon, children, onClick }) {
     if (onParentPage) setOpen(true);
   }, [onParentPage]);
 
-  const activeTab = onParentPage ? searchParams.get('tab') || 'general' : null;
+  const activeTab = onParentPage ? searchParams.get('tab') || children[0]?.key || null : null;
 
   async function handleChildClick(e, childTo) {
     if (!hasUnsavedChanges) {
@@ -227,32 +234,45 @@ export default function AdminSidebar() {
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const canManageUsers = ['Admin', 'SuperAdmin'].includes(user?.role);
   const onSettingsPage = location.pathname === '/admin/settings';
+  const onDocsPage = location.pathname === '/admin/documentation';
+
+  // Orders/Users badges poll on an interval so they update live while the
+  // admin panel is open, not just when navigating between pages - a new
+  // order or seller application shouldn't need a page change to show up.
+  useEffect(() => {
+    function fetchPendingCounts() {
+      api.get('/orders').then((res) => {
+        setPendingCount(res.data.filter((o) => o.status === 'pending').length);
+      }).catch(() => {});
+      if (canManageUsers) {
+        api.get('/users?status=pending').then((res) => {
+          setPendingUsersCount(res.data.length);
+        }).catch(() => {});
+      }
+    }
+    fetchPendingCounts();
+    const interval = setInterval(fetchPendingCounts, 15000);
+    return () => clearInterval(interval);
+  }, [canManageUsers]);
 
   useEffect(() => {
-    api.get('/orders').then((res) => {
-      setPendingCount(res.data.filter((o) => o.status === 'pending').length);
-    }).catch(() => {});
     api.get('/products?lowStock=true').then((res) => {
       setLowStockCount(res.data.length);
     }).catch(() => {});
-    if (canManageUsers) {
-      api.get('/users?status=pending').then((res) => {
-        setPendingUsersCount(res.data.length);
-      }).catch(() => {});
-    }
-  }, [location.pathname, canManageUsers]);
+  }, [location.pathname]);
 
-  // Settings lives at the bottom of the drawer — when opening the hamburger
-  // while already on a settings tab, scroll down so the active sub-nav is visible.
+  // Settings / Documentation live at the bottom of the drawer — when opening
+  // the hamburger while already on one of those pages, scroll down so the
+  // active sub-nav is visible.
   useEffect(() => {
-    if (!menuOpen || !onSettingsPage) return;
+    if (!menuOpen || (!onSettingsPage && !onDocsPage)) return;
     const t = window.setTimeout(() => {
       const container = navScrollRef.current;
       if (container) container.scrollTop = container.scrollHeight;
       settingsAnchorRef.current?.scrollIntoView({ block: 'nearest' });
     }, 80);
     return () => clearTimeout(t);
-  }, [menuOpen, onSettingsPage]);
+  }, [menuOpen, onSettingsPage, onDocsPage]);
 
   async function handleLogout() {
     if (!(await guardLeave(hasUnsavedChanges, setHasUnsavedChanges))) return;
@@ -273,7 +293,7 @@ export default function AdminSidebar() {
 
   const brand = (
     <Link
-      to={gatingActive ? '/admin/settings?tab=general' : '/admin/dashboard'}
+      to={gatingActive ? '/admin/settings?tab=drive' : '/admin/dashboard'}
       className="font-extrabold text-lg flex items-center gap-2"
     >
       <FontAwesomeIcon icon={faToolbox} />
@@ -311,12 +331,10 @@ export default function AdminSidebar() {
       <div
         className={`px-3 py-4 space-y-1 shrink-0 ${gatingActive ? 'border-b border-white/10' : 'border-t border-white/10'}`}
       >
-        <SidebarLink to="/admin/documentation" label="Documentation" icon={faBook} onClick={onLinkClick} />
-        {canManageUsers && (
-          <div ref={settingsAnchorRef}>
-            <SidebarExpandableLink {...SETTINGS_ITEM} onClick={onLinkClick} />
-          </div>
-        )}
+        <div ref={settingsAnchorRef} className="space-y-1">
+          <SidebarExpandableLink {...DOCUMENTATION_ITEM} onClick={onLinkClick} />
+          {canManageUsers && <SidebarExpandableLink {...SETTINGS_ITEM} onClick={onLinkClick} />}
+        </div>
         {!gatingActive && (
           <button
             onClick={() => handleBackToHome(onLinkClick)}

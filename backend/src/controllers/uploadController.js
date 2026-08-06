@@ -6,9 +6,18 @@ const driveService = require('../services/driveService');
 
 async function getDriveConfig() {
   const [[row]] = await pool.query(
-    'SELECT drive_client_email, drive_private_key, drive_folder_id FROM settings WHERE id = 1'
+    'SELECT drive_client_id, drive_client_secret, drive_refresh_token, drive_folder_id FROM settings WHERE id = 1'
   );
   return row;
+}
+
+function isDriveConfigured(config) {
+  return Boolean(
+    config?.drive_client_id &&
+      config?.drive_client_secret &&
+      config?.drive_refresh_token &&
+      config?.drive_folder_id
+  );
 }
 
 async function uploadImage(req, res) {
@@ -21,7 +30,7 @@ async function uploadImage(req, res) {
 
   try {
     const config = await getDriveConfig();
-    if (config?.drive_client_email && config?.drive_private_key && config?.drive_folder_id) {
+    if (isDriveConfigured(config)) {
       const url = await driveService.uploadFile(config, req.file.buffer, filename, req.file.mimetype);
       return res.status(201).json({ url });
     }

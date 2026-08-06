@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPen, faUser } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
+import MediaImg from './MediaImg';
 
 const MAX_FILE_SIZE_MB = 10;
 
@@ -45,7 +46,7 @@ export default function AvatarUpload({ src, onChange, size = 'w-24 h-24' }) {
           className={`${size} rounded-full overflow-hidden bg-gray-100 dark:bg-neutral-800 flex items-center justify-center`}
         >
           {src ? (
-            <img src={src} alt="Profile" className="w-full h-full object-cover" />
+            <MediaImg src={src} alt="Profile" className="w-full h-full object-cover" />
           ) : (
             <FontAwesomeIcon icon={faUser} className="text-3xl text-gray-400" />
           )}

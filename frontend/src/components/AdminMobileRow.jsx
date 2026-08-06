@@ -1,5 +1,6 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
+import MediaImg from './MediaImg';
 
 const TONE_STYLES = {
   default: 'bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700',
@@ -19,7 +20,7 @@ export default function AdminMobileRow({ image, title, subtitle, meta, onView, a
     <div className="flex items-center gap-3 py-3 px-1 border-b border-gray-100 dark:border-neutral-800 last:border-b-0">
       {image !== undefined && (
         <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-neutral-800 shrink-0 flex items-center justify-center text-gray-400 dark:text-neutral-600">
-          {image ? <img src={image} alt="" className="w-full h-full object-cover" /> : title?.trim().charAt(0).toUpperCase()}
+          {image ? <MediaImg src={image} alt="" className="w-full h-full object-cover" /> : title?.trim().charAt(0).toUpperCase()}
         </div>
       )}
       <button type="button" onClick={onView} className="flex-1 min-w-0 text-left">

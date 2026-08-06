@@ -115,6 +115,7 @@ async function login(req, res) {
         email: dbUser.email,
         role: dbUser.role,
         phone: dbUser.phone,
+        image: dbUser.image,
         type: 'staff',
       };
       const token = signToken(user);
@@ -136,6 +137,7 @@ async function login(req, res) {
         name: dbCustomer.name,
         email: dbCustomer.email,
         phone: dbCustomer.whatsapp_number,
+        image: dbCustomer.image,
         role: 'Customer',
         type: 'customer',
       };

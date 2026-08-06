@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import api from '../api/client';
+import { resolveMediaUrl } from '../lib/mediaUrl';
 
 const SettingsContext = createContext(null);
 const STORAGE_KEY = 'ccs_settings';
@@ -19,8 +20,8 @@ const FAVICON_MIME_TYPES = {
 function applyFavicon(settings) {
   const link = document.getElementById('app-favicon');
   if (!link) return;
-  const href = settings?.store_logo || DEFAULT_LOGO;
-  const ext = href.split('.').pop().toLowerCase();
+  const href = resolveMediaUrl(settings?.store_logo || DEFAULT_LOGO);
+  const ext = String(href).split('.').pop().toLowerCase().split('?')[0];
   link.href = href;
   link.type = FAVICON_MIME_TYPES[ext] || 'image/x-icon';
 }

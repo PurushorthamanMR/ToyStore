@@ -64,7 +64,7 @@ async function sendOtpEmail(to, code, purpose, name) {
 
   try {
     await send(config.emailjs_template_otp, config, {
-      to_email: to,
+      email: to,
       to_name: name || to,
       code,
       expires_minutes: 10,
@@ -88,7 +88,7 @@ async function sendNotification(subject, message, to, name, label) {
     return;
   }
   try {
-    await send(config.emailjs_template_notify, config, { to_email: to, to_name: name || to, subject, message });
+    await send(config.emailjs_template_notify, config, { email: to, to_name: name || to, subject, message });
   } catch (err) {
     console.error(`[emailjs] ${label} send failed:`, err?.text || err?.message || err);
   }
@@ -124,6 +124,16 @@ async function sendSellerApprovedEmail(to, name, shopName) {
   );
 }
 
+async function sendSellerRejectedEmail(to, name, shopName) {
+  await sendNotification(
+    'Your seller application was not approved',
+    `Thanks for your interest in selling with us. After review, your application for "${shopName || ''}" was not approved this time.`,
+    to,
+    name,
+    'seller-rejected'
+  );
+}
+
 async function sendSetupCompleteEmail(to) {
   await sendNotification(
     'Your store setup is complete!',
@@ -139,5 +149,6 @@ module.exports = {
   sendWelcomeEmail,
   sendSellerAppliedEmail,
   sendSellerApprovedEmail,
+  sendSellerRejectedEmail,
   sendSetupCompleteEmail,
 };

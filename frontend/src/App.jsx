@@ -90,9 +90,32 @@ function App() {
   // Pages should only be reached by clicking something inside the running app.
   // App only remounts on a genuine fresh page load (typed URL, refresh, bookmark,
   // shared link) - never on in-app navigation - so this only fires for that case.
+  // Exceptions: /admin/* (OAuth return + admin refresh) and wholesale share links.
   useLayoutEffect(() => {
     if (hasMountedRef.current) return;
     hasMountedRef.current = true;
+
+    const params = new URLSearchParams(location.search);
+    const driveResult = params.get('drive');
+    // Google OAuth sometimes lands on "/" if an older redirect bounced here —
+    // send the result back to Settings so the success/error popup can show.
+    if (
+      location.pathname === '/' &&
+      (driveResult === 'connected' || driveResult === 'error')
+    ) {
+      const reason = params.get('reason');
+      navigate(
+        `/admin/settings?tab=drive&drive=${driveResult}${
+          reason ? `&reason=${encodeURIComponent(reason)}` : ''
+        }`,
+        { replace: true }
+      );
+      return;
+    }
+
+    if (location.pathname.startsWith('/admin')) return;
+    if (location.pathname.startsWith('/wholesale-view/')) return;
+
     const isKnownPath = KNOWN_PATHS.some((pattern) => matchPath(pattern, location.pathname));
     if (isKnownPath && location.pathname !== '/') {
       navigate('/', { replace: true });

@@ -31,6 +31,8 @@ import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { CURRENCIES } from '../lib/currency';
+import { resolveMediaUrl } from '../lib/mediaUrl';
+import MediaImg from './MediaImg';
 
 function SearchBar({ value, onChange, onSubmit, className = '' }) {
   return (
@@ -248,9 +250,10 @@ export default function Navbar() {
           <Link to="/" className="text-xl sm:text-2xl font-extrabold tracking-tight whitespace-nowrap flex items-center gap-2">
             {settings?.store_icon && (
               <img
-                src={settings.store_icon}
+                src={resolveMediaUrl(settings.store_icon)}
                 alt=""
                 className="w-11 h-11 sm:w-14 sm:h-14 object-contain shrink-0 scale-125 lg:scale-150"
+                referrerPolicy="no-referrer"
               />
             )}
             <span className="hidden lg:inline">{settings?.store_name || 'Soon'}</span>
@@ -297,8 +300,12 @@ export default function Navbar() {
                   title={user.name}
                   className="flex items-center gap-2 hover:opacity-90"
                 >
-                  <span className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center text-sm font-bold">
-                    {initial}
+                  <span className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center text-sm font-bold overflow-hidden shrink-0">
+                    {user.image ? (
+                      <MediaImg src={user.image} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      initial
+                    )}
                   </span>
                   <span className="text-sm font-medium">{user.name.split(' ')[0]}</span>
                 </motion.button>
@@ -431,8 +438,12 @@ export default function Navbar() {
 
                 {user ? (
                   <>
-                    <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold mb-3">
-                      {initial}
+                    <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold mb-3 overflow-hidden">
+                      {user.image ? (
+                        <MediaImg src={user.image} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        initial
+                      )}
                     </div>
                     <p className="font-bold text-lg">{user.name}</p>
                     <p className="text-sm opacity-80">{user.email}</p>

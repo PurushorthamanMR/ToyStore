@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCamera,
@@ -9,6 +10,7 @@ import {
   faCopy,
   faCheck,
 } from '@fortawesome/free-solid-svg-icons';
+import { copyText } from '../../lib/clipboard';
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: faCircleInfo },
@@ -16,6 +18,9 @@ const TABS = [
   { key: 'setup', label: 'Setup Guide', icon: faListCheck },
   { key: 'config', label: 'Configuration Guide', icon: faGear },
 ];
+
+// Sidebar sub-nav (same shape as SETTINGS_SECTIONS).
+export const DOCUMENTATION_TABS = TABS.map(({ key, label }) => ({ key, label }));
 
 function Card({ title, children }) {
   return (
@@ -76,13 +81,10 @@ function CodeBlock({ children }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(children);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API unavailable (e.g. insecure context) - nothing else to do.
-    }
+    const ok = await copyText(children);
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   return (
@@ -91,11 +93,11 @@ function CodeBlock({ children }) {
         type="button"
         onClick={handleCopy}
         title={copied ? 'Copied!' : 'Copy'}
-        className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-md bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-600 shadow-sm"
+        className="absolute top-2 right-2 z-10 w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-md bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-600 shadow-sm touch-manipulation"
       >
         <FontAwesomeIcon icon={copied ? faCheck : faCopy} className={`text-xs ${copied ? 'text-wa-green' : ''}`} />
       </button>
-      <pre className="bg-gray-100 dark:bg-neutral-800 text-gray-800 dark:text-gray-200 rounded-lg p-3 pr-10 text-[11px] font-mono leading-relaxed overflow-x-auto whitespace-pre max-w-full">
+      <pre className="bg-gray-100 dark:bg-neutral-800 text-gray-800 dark:text-gray-200 rounded-lg p-3 pr-12 text-[11px] font-mono leading-relaxed overflow-x-auto whitespace-pre max-w-full">
         {children}
       </pre>
     </div>
@@ -122,8 +124,8 @@ function OverviewTab() {
           <li><strong>Backend:</strong> Node.js + Express, raw parameterized SQL (no ORM)</li>
           <li><strong>Database:</strong> MySQL — schema/migrations run automatically on every backend boot</li>
           <li><strong>Auth:</strong> JWT tokens, bcrypt password hashing, email OTP for signup/reset flows</li>
-          <li><strong>Email:</strong> EmailJS (see Configuration Guide)</li>
-          <li><strong>Image uploads:</strong> Google Drive, falling back to local disk when unconfigured (see Configuration Guide)</li>
+          <li><strong>Email:</strong> EmailJS from the backend (needs Private Key + non-browser API access — see Configuration Guide)</li>
+          <li><strong>Image uploads:</strong> Google Drive via free Gmail OAuth, falling back to local disk when unconfigured (see Configuration Guide)</li>
         </ul>
       </Card>
       <Card title="User roles">
@@ -243,17 +245,17 @@ function SetupTab() {
             </p>
           </div>
           <div>
-            <SubHeading>Email (EmailJS)</SubHeading>
-            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-              Powers every outgoing email — verification codes, welcome, seller-status, and setup-complete. See the
-              Configuration Guide tab for the full walkthrough.
-            </p>
-          </div>
-          <div>
             <SubHeading>Google Drive</SubHeading>
             <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
               Where uploaded images (products, categories, banners, blogs, store logo, profile pictures) are
               stored. See the Configuration Guide tab for the full walkthrough.
+            </p>
+          </div>
+          <div>
+            <SubHeading>Email (EmailJS)</SubHeading>
+            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+              Powers every outgoing email — verification codes, welcome, seller-status, and setup-complete. See the
+              Configuration Guide tab for the full walkthrough.
             </p>
           </div>
           <div>
@@ -304,12 +306,102 @@ const NOTIFY_TEMPLATE_HTML = `<div style="max-width:480px;margin:0 auto;font-fam
 function ConfigTab() {
   return (
     <div className="space-y-4">
+      <div id="config-drive">
+      <Card title="Google Drive">
+        <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
+          Stores every image uploaded in the app (products, categories, banners, blogs, store logo, profile
+          pictures) instead of this server's local disk. Configure in <strong>Settings → Google Drive</strong>.
+          Uses <strong>OAuth with a free Gmail account</strong> (not a Service Account) so files use your normal
+          Drive storage — no Google Workspace / Shared Drive required.
+        </p>
+
+        <SubHeading>1. Create a Google Cloud project</SubHeading>
+        <div className="space-y-3 pt-1">
+          <Step n={1}>Go to <Code>console.cloud.google.com</Code> → project dropdown (top left) → <strong>New Project</strong> → name it anything → <strong>Create</strong>, and make sure it's selected.</Step>
+        </div>
+
+        <SubHeading>2. Enable the Drive API</SubHeading>
+        <div className="space-y-3 pt-1">
+          <Step n={1}><strong>APIs &amp; Services → Library</strong> → search <strong>Google Drive API</strong> → <strong>Enable</strong>.</Step>
+        </div>
+
+        <SubHeading>3. Configure the OAuth consent screen</SubHeading>
+        <div className="space-y-3 pt-1">
+          <Step n={1}>
+            <strong>APIs &amp; Services → OAuth consent screen</strong> → choose <strong>External</strong> → fill in
+            App name, User support email, and Developer contact → Save. You can leave it in{' '}
+            <strong>Testing</strong> mode (no Google verification needed for personal use).
+          </Step>
+          <Step n={2}>
+            Under <strong>Test users</strong>, click <strong>Add users</strong> and add the{' '}
+            <strong>exact Gmail</strong> you'll use for Connect. While the app is in Testing, anyone not on this
+            list gets <em>"Access blocked… Error 403: access_denied"</em>.
+          </Step>
+          <Step n={3}>
+            Under <strong>Scopes</strong>, you can skip adding any manually — the app requests Drive access when you
+            click Connect.
+          </Step>
+        </div>
+
+        <SubHeading>4. Create an OAuth Client ID</SubHeading>
+        <div className="space-y-3 pt-1">
+          <Step n={1}>
+            <strong>APIs &amp; Services → Credentials</strong> → <strong>+ Create Credentials</strong> →{' '}
+            <strong>OAuth client ID</strong> → Application type <strong>Web application</strong>.
+          </Step>
+          <Step n={2}>
+            Under <strong>Authorized redirect URIs</strong>, paste the Redirect URI shown in{' '}
+            <strong>Settings → Google Drive</strong> (it looks like{' '}
+            <Code>http://localhost:5000/api/settings/drive/oauth/callback</Code>). If you deploy later, set{' '}
+            <Code>PUBLIC_BACKEND_URL</Code> in <Code>backend/.env</Code> and add that callback URL too.
+          </Step>
+          <Step n={3}>
+            <strong>Create</strong>, then copy the <strong>Client ID</strong> and <strong>Client Secret</strong>.
+          </Step>
+        </div>
+
+        <SubHeading>5. Create a Drive folder</SubHeading>
+        <div className="space-y-3 pt-1">
+          <Step n={1}>
+            Go to <Code>drive.google.com</Code> signed in with the same free Gmail you'll connect →{' '}
+            <strong>+ New</strong> → <strong>New folder</strong> → name it (e.g. "Store Uploads") →{' '}
+            <strong>Create</strong>.
+          </Step>
+          <Step n={2}>
+            Open the folder and copy its ID from the address bar (the part after <Code>/folders/</Code> in{' '}
+            <Code>drive.google.com/drive/folders/&lt;ID&gt;</Code>).
+          </Step>
+        </div>
+
+        <SubHeading>6. Save and connect in the admin panel</SubHeading>
+        <div className="space-y-3 pt-1">
+          <Step n={1}>
+            <strong>Settings → Google Drive</strong>: paste Client ID, Client Secret, and Folder ID → Save.
+          </Step>
+          <Step n={2}>
+            Click <strong>Connect Google Account</strong>, sign in with the <strong>same Gmail</strong> you added as
+            a Test user, and allow access. On success you'll see a confirmation popup and the status{' '}
+            <em>"Google account connected"</em>. On failure you'll see an error popup with the reason.
+          </Step>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
+          Leave the fields blank (or Disconnect) to keep saving uploads to this server's local disk instead.
+          Uploaded images are stored as public Drive thumbnail links so they display in the admin preview and
+          storefront.
+        </p>
+      </Card>
+      </div>
+
+      <div id="config-email">
       <Card title="Email (EmailJS)">
         <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
           Sends signup/reset verification codes, welcome emails, and seller-status emails. Configure in{' '}
           <strong>Settings → Email (EmailJS)</strong>. Free EmailJS plans allow only 2 templates, so everything
           funnels through a <strong>Code</strong> template (OTP + forgot-password) and a <strong>Notify</strong>{' '}
-          template (welcome + seller applied/approved + setup-complete, subject and message sent dynamically).
+          template (welcome + seller applied/approved/rejected + setup-complete, subject and message sent dynamically).
+          The backend sends from Node.js, so you must paste the <strong>Private Key</strong> and enable{' '}
+          <strong>non-browser API access</strong> (step 3).
         </p>
 
         <SubHeading>1. Create your account</SubHeading>
@@ -335,15 +427,27 @@ function ConfigTab() {
           </Step>
         </div>
 
-        <SubHeading>3. Get your keys</SubHeading>
+        <SubHeading>3. Get your keys + allow server sending</SubHeading>
         <div className="space-y-3 pt-1">
-          <Step n={1}>Account (top right) → <strong>General</strong> tab → copy the <strong>Public Key</strong> and <strong>Private Key</strong> (the private key is required for server-side sending — EmailJS blocks non-browser calls without it).</Step>
+          <Step n={1}>
+            Account (top right) → <strong>General</strong> tab → copy the <strong>Public Key</strong> and{' '}
+            <strong>Private Key</strong>. The Private Key is required — without it, server-side sends fail.
+          </Step>
+          <Step n={2}>
+            Open <Code>https://dashboard.emailjs.com/admin/account/security</Code> → enable{' '}
+            <strong>Allow API requests from non-browser applications</strong> → Save.
+            <br />
+            <span className="text-gray-500 dark:text-gray-400">
+              If this stays off, emails fail with:{' '}
+              <em>"API access from non-browser environments is currently disabled"</em>.
+            </span>
+          </Step>
         </div>
 
         <SubHeading>4. Create the Code template</SubHeading>
         <div className="space-y-3 pt-1">
           <Step n={1}><strong>Email Templates</strong> → <strong>Create New Template</strong> → pick any starting design (e.g. "One-Time Password") from the popup, since there's no blank option — its placeholder text gets replaced below.</Step>
-          <Step n={2}>Right side panel: set <strong>To Email</strong> to <Code>{'{{to_email}}'}</Code>.</Step>
+          <Step n={2}>Right side panel: set <strong>To Email</strong> to <Code>{'{{email}}'}</Code>.</Step>
           <Step n={3}>Subject field: <Code>{'{{subject}}'}</Code> (dynamic — the backend sends a different subject per purpose).</Step>
           <Step n={4}>
             Click the image icon in the toolbar and upload your store logo (optional — creates a <Code>cid:</Code>{' '}
@@ -361,7 +465,7 @@ function ConfigTab() {
         <SubHeading>5. Create the Notify template</SubHeading>
         <div className="space-y-3 pt-1">
           <Step n={1}>Repeat step 4, but this is your <strong>2nd and last</strong> template (free plans allow only 2).</Step>
-          <Step n={2}>Same <strong>To Email</strong> (<Code>{'{{to_email}}'}</Code>) and <strong>Subject</strong> (<Code>{'{{subject}}'}</Code>) as above.</Step>
+          <Step n={2}>Same <strong>To Email</strong> (<Code>{'{{email}}'}</Code>) and <strong>Subject</strong> (<Code>{'{{subject}}'}</Code>) as above.</Step>
           <Step n={3}>
             Body HTML:
             <CodeBlock>{NOTIFY_TEMPLATE_HTML}</CodeBlock>
@@ -375,6 +479,10 @@ function ConfigTab() {
             <strong>Settings → Email (EmailJS)</strong>: paste the Service ID, Public Key, Private Key, and both
             Template IDs (Code Template ID, Notify Template ID) → Save.
           </Step>
+          <Step n={2}>
+            Confirm step 3 is done (Private Key saved + non-browser API access enabled), then test by triggering a
+            signup OTP or password-reset email.
+          </Step>
         </div>
 
         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
@@ -384,93 +492,30 @@ function ConfigTab() {
           <Code>{'{{year}}'}</Code> — no extra setup needed for those four.
         </p>
       </Card>
-
-      <Card title="Google Drive">
-        <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
-          Stores every image uploaded in the app (products, categories, banners, blogs, store logo, profile
-          pictures) instead of this server's local disk. Configure in <strong>Settings → Google Drive</strong>.
-          Uses a Service Account (not OAuth) since it needs to run unattended. Google requires a{' '}
-          <strong>Shared Drive</strong> (Google Workspace) — a personal My Drive folder shared with the Service
-          Account will fail with a storage-quota error.
-        </p>
-
-        <SubHeading>1. Create a Google Cloud project</SubHeading>
-        <div className="space-y-3 pt-1">
-          <Step n={1}>Go to <Code>console.cloud.google.com</Code> → project dropdown (top left) → <strong>New Project</strong> → name it anything → <strong>Create</strong>, and make sure it's selected.</Step>
-        </div>
-
-        <SubHeading>2. Enable the Drive API</SubHeading>
-        <div className="space-y-3 pt-1">
-          <Step n={1}><strong>APIs &amp; Services → Library</strong> → search <strong>Google Drive API</strong> → <strong>Enable</strong>.</Step>
-        </div>
-
-        <SubHeading>3. Create the Service Account</SubHeading>
-        <div className="space-y-3 pt-1">
-          <Step n={1}><strong>APIs &amp; Services → Credentials</strong> → <strong>+ Create Credentials</strong> → <strong>Service Account</strong> → name it → <strong>Create and Continue</strong> → skip the optional role step → <strong>Done</strong>.</Step>
-          <Step n={2}>Click the new Service Account → <strong>Keys</strong> tab → <strong>Add Key</strong> → <strong>Create New Key</strong> → <strong>JSON</strong> → <strong>Create</strong>. A file downloads — open it in a text editor.</Step>
-          <Step n={3}>Copy the <Code>client_email</Code> value, and the full multi-line <Code>private_key</Code> value including the <Code>-----BEGIN PRIVATE KEY-----</Code>/<Code>-----END-----</Code> lines.</Step>
-        </div>
-
-        <SubHeading>4. Create a Shared Drive folder</SubHeading>
-        <div className="space-y-3 pt-1">
-          <Step n={1}>
-            Go to <Code>drive.google.com</Code> with a <strong>Google Workspace</strong> account → left sidebar{' '}
-            <strong>Shared drives</strong> → <strong>+ New</strong> → create a Shared Drive (e.g. "Store Uploads").
-          </Step>
-          <Step n={2}>
-            Open the Shared Drive → manage members → add the Service Account's <Code>client_email</Code> as{' '}
-            <strong>Content manager</strong> (or Manager).
-          </Step>
-          <Step n={3}>
-            Inside the Shared Drive, create a folder if you want one, open it, and copy its ID from the address bar
-            (the part after <Code>/folders/</Code> in <Code>drive.google.com/drive/folders/&lt;ID&gt;</Code>).
-          </Step>
-        </div>
-
-        <SubHeading>5. Save into the admin panel</SubHeading>
-        <div className="space-y-3 pt-1">
-          <Step n={1}>
-            <strong>Settings → Google Drive</strong>: paste the Service Account Email, Private Key (the full
-            multi-line value), and Folder ID → Save.
-          </Step>
-        </div>
-
-        <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
-          Leave any of the 3 fields blank to keep saving uploads to this server's local disk instead. Personal
-          Gmail / My Drive folders cannot be used with a Service Account.
-        </p>
-      </Card>
+      </div>
     </div>
   );
 }
 
 export default function AdminDocumentation() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const sectionParam = searchParams.get('section');
+  const activeTab = TABS.some((t) => t.key === tabParam) ? tabParam : 'overview';
+
+  useEffect(() => {
+    if (activeTab !== 'config') return;
+    if (sectionParam !== 'drive' && sectionParam !== 'email') return;
+    const el = document.getElementById(`config-${sectionParam}`);
+    if (el) {
+      // Wait a tick so the config tab content is in the DOM.
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  }, [activeTab, sectionParam]);
 
   return (
     <div className="max-w-5xl">
-      <h2 className="text-xl font-bold mb-1 text-gray-900 dark:text-gray-100">Documentation</h2>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        What this project is, what every page does, how to set it up, and how to configure it.
-      </p>
-
-      <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-4 px-4 pb-1 mb-5 sm:mx-0 sm:px-0 sm:flex-wrap">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`shrink-0 whitespace-nowrap flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'bg-wa-green text-white'
-                : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-            }`}
-          >
-            <FontAwesomeIcon icon={tab.icon} className="text-xs" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">Documentation</h2>
 
       {activeTab === 'overview' && <OverviewTab />}
       {activeTab === 'pages' && <PagesTab />}

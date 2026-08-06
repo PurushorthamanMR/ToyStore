@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCamera } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/client';
+import MediaImg from './MediaImg';
 
 const MAX_FILE_SIZE_MB = 10;
 
@@ -42,7 +43,7 @@ export default function ImageUploadBox({ value, onChange, disabled }) {
         }`}
       >
         {value ? (
-          <img src={value} alt="Preview" className="h-16 w-16 object-cover rounded" />
+          <MediaImg src={value} alt="Preview" className="h-16 w-16 object-cover rounded" />
         ) : (
           <FontAwesomeIcon icon={faCamera} className="text-2xl" />
         )}
