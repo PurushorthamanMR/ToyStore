@@ -5,7 +5,7 @@ import api from '../api/client';
 
 const MAX_FILE_SIZE_MB = 10;
 
-export default function ImageUploadBox({ value, onChange }) {
+export default function ImageUploadBox({ value, onChange, disabled }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,7 +36,11 @@ export default function ImageUploadBox({ value, onChange }) {
 
   return (
     <div>
-      <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg py-3 cursor-pointer hover:border-wa-green transition-colors">
+      <label
+        className={`flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg py-3 transition-colors ${
+          disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-wa-green'
+        }`}
+      >
         {value ? (
           <img src={value} alt="Preview" className="h-16 w-16 object-cover rounded" />
         ) : (
@@ -46,7 +50,13 @@ export default function ImageUploadBox({ value, onChange }) {
           {uploading ? 'Uploading...' : 'Click to upload image'}
         </span>
         <span className="text-[11px] text-gray-400 dark:text-gray-500">Max {MAX_FILE_SIZE_MB}MB</span>
-        <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFile}
+          disabled={uploading || disabled}
+        />
       </label>
       {error && <p className="text-red-600 text-xs mt-1">{error}</p>}
     </div>

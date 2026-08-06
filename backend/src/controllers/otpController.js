@@ -5,7 +5,7 @@ const { buildSellerApplicationMessage } = require('./whatsappController');
 const { isValidEmail } = require('../utils/validators');
 const { getWhatsappNumber } = require('../utils/settings');
 const { signToken } = require('./authController');
-const { sendOtpEmail } = require('../services/emailService');
+const { sendOtpEmail, sendWelcomeEmail, sendSellerAppliedEmail } = require('../services/emailService');
 
 const OTP_TTL_MINUTES = 10;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -143,6 +143,7 @@ async function verifyRegisterOtp(req, res) {
       type: 'customer',
     };
     const token = signToken(user);
+    await sendWelcomeEmail(payload.email, payload.full_name);
     res.status(201).json({ token, user });
   } catch (err) {
     handleOtpError(err, res, 'Verification failed');
@@ -206,6 +207,8 @@ async function verifySellerOtp(req, res) {
       'INSERT INTO users (name, email, password, phone, shop_name, city, image, role_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [payload.full_name, payload.email, payload.password, payload.mobile, payload.shop_name, payload.city, payload.image, sellerRole.id, 'pending']
     );
+
+    await sendSellerAppliedEmail(payload.email, payload.full_name, payload.shop_name);
 
     // Same pattern as order requests: the applicant opens WhatsApp on their
     // own device with the message pre-filled, instead of a server-side bot

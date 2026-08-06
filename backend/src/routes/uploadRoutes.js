@@ -1,17 +1,11 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
 const { authenticateOptional } = require('../middleware/auth');
 const { uploadImage } = require('../controllers/uploadController');
 
-const storage = multer.diskStorage({
-  destination: path.join(__dirname, '../../uploads'),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
-  },
-});
+// Buffered in memory (not written to disk here) - uploadController decides per-request
+// whether to send it to Google Drive or fall back to writing it into backend/uploads.
+const storage = multer.memoryStorage();
 
 function fileFilter(req, file, cb) {
   if (!file.mimetype.startsWith('image/')) {

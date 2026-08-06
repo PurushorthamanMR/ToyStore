@@ -44,6 +44,15 @@ async function addColumnIfMissing(connection, dbName, table, column, definition,
   );
 }
 
+async function dropColumnIfExists(connection, dbName, table, column) {
+  if (!(await tableExists(connection, dbName, table))) return;
+  const colNames = await getColumnNames(connection, dbName, table);
+  if (!colNames.includes(column)) return;
+
+  console.log(`[db] Dropping ${column} column from ${table}...`);
+  await connection.query(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+}
+
 async function migrateUserStatusRejected(connection, dbName) {
   if (!(await tableExists(connection, dbName, 'users'))) return;
   const [rows] = await connection.query(
@@ -524,13 +533,42 @@ async function migrate() {
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'terms_content', 'LONGTEXT', 'wholesale_token');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'return_policy_content', 'LONGTEXT', 'terms_content');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'privacy_policy_content', 'LONGTEXT', 'return_policy_content');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_host', 'VARCHAR(150)', 'privacy_policy_content');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_port', 'INT', 'smtp_host');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_user', 'VARCHAR(150)', 'smtp_port');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'smtp_pass', 'VARCHAR(255)', 'smtp_user');
-    await addColumnIfMissing(connection, DB_NAME, 'settings', 'email_from', 'VARCHAR(150)', 'smtp_pass');
+    // Historical anchor column for the next line, on DBs old enough to be missing active_font -
+    // every such DB already has email_from from having booted a pre-EmailJS version of this app.
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'active_font', "VARCHAR(150) NOT NULL DEFAULT 'Archivo Narrow'", 'email_from');
     await addColumnIfMissing(connection, DB_NAME, 'settings', 'store_icon', 'VARCHAR(255)', 'store_logo');
+
+    // Brevo/SMTP -> EmailJS migration.
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'smtp_host');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'smtp_port');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'smtp_user');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'smtp_pass');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'email_from');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_service_id', 'VARCHAR(100)', 'privacy_policy_content');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_public_key', 'VARCHAR(150)', 'emailjs_service_id');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_private_key', 'VARCHAR(150)', 'emailjs_public_key');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_reply_to', 'VARCHAR(150)', 'emailjs_private_key');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_template_otp', 'VARCHAR(100)', 'emailjs_reply_to');
+    // Free EmailJS plans only allow 2 templates, so every purpose funnels into one of these two:
+    // emailjs_template_otp (OTP + forgot-password codes) and emailjs_template_notify (welcome + seller status).
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'emailjs_template_forgot');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'emailjs_template_seller_applied');
+    await dropColumnIfExists(connection, DB_NAME, 'settings', 'emailjs_template_seller_approved');
+    if (await tableExists(connection, DB_NAME, 'settings')) {
+      const colNames = await getColumnNames(connection, DB_NAME, 'settings');
+      if (colNames.includes('emailjs_template_welcome') && !colNames.includes('emailjs_template_notify')) {
+        console.log('[db] Renaming emailjs_template_welcome to emailjs_template_notify...');
+        await connection.query(
+          'ALTER TABLE settings CHANGE COLUMN emailjs_template_welcome emailjs_template_notify VARCHAR(100)'
+        );
+      }
+    }
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'emailjs_template_notify', 'VARCHAR(100)', 'emailjs_template_otp');
+
+    // Local disk -> Google Drive image uploads.
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_client_email', 'VARCHAR(255)', 'emailjs_template_notify');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_private_key', 'TEXT', 'drive_client_email');
+    await addColumnIfMissing(connection, DB_NAME, 'settings', 'drive_folder_id', 'VARCHAR(150)', 'drive_private_key');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     await connection.query(schemaSql);

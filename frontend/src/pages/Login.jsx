@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PasswordInput from '../components/PasswordInput';
 import { authLabelClass, authInputClass, authButtonClass } from '../lib/authStyles';
+import api from '../api/client';
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -19,7 +20,17 @@ export default function Login() {
     setLoading(true);
     try {
       const { user } = await signIn(identifier, password, remember);
-      navigate(['Admin', 'SuperAdmin'].includes(user.role) ? '/admin' : '/');
+      if (user.role === 'Admin') {
+        // First-time-use nudge (Admin only - SuperAdmin is the developer role
+        // and always goes straight to the Dashboard): send them to finish
+        // initial store setup until every Settings section is filled in.
+        const setupStatus = await api.get('/settings/setup-status').then((res) => res.data).catch(() => null);
+        navigate(setupStatus && setupStatus.percent !== 100 ? '/admin/settings?tab=general' : '/admin');
+      } else if (user.role === 'SuperAdmin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {

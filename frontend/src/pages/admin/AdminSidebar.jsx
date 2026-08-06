@@ -21,11 +21,29 @@ import {
   faRightFromBracket,
   faGear,
   faChevronDown,
+  faBook,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useUnsavedChanges } from '../../context/UnsavedChangesContext';
+import { useSetupStatus } from '../../context/SetupStatusContext';
+import { confirmAction } from '../../lib/alert';
 import api from '../../api/client';
 import CustomScrollbar from '../../components/CustomScrollbar';
 import { SETTINGS_SECTIONS } from './AdminSettings';
+
+// Shared by every navigation trigger below (top-level links, Settings sub-tabs,
+// Back to Home, Logout) - lets an in-progress Settings edit block leaving
+// until the admin confirms discarding it.
+async function guardLeave(hasUnsavedChanges, setHasUnsavedChanges) {
+  if (!hasUnsavedChanges) return true;
+  const confirmed = await confirmAction({
+    title: 'Discard unsaved changes?',
+    text: 'You have unsaved edits in Settings. Leaving now will discard them.',
+    confirmText: 'Discard changes',
+  });
+  if (confirmed) setHasUnsavedChanges(false);
+  return confirmed;
+}
 
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
@@ -91,10 +109,24 @@ function buildSections({ pendingCount, lowStockCount, pendingUsersCount, canMana
 const SETTINGS_ITEM = { to: '/admin/settings', label: 'Settings', icon: faGear, children: SETTINGS_SECTIONS };
 
 function SidebarLink({ to, label, icon, badge, onClick }) {
+  const navigate = useNavigate();
+  const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
+
+  async function handleClick(e) {
+    if (!hasUnsavedChanges) {
+      onClick?.();
+      return;
+    }
+    e.preventDefault();
+    if (!(await guardLeave(hasUnsavedChanges, setHasUnsavedChanges))) return;
+    onClick?.();
+    navigate(to);
+  }
+
   return (
     <NavLink
       to={to}
-      onClick={onClick}
+      onClick={handleClick}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
           isActive ? 'bg-white/20' : 'hover:bg-white/10'
@@ -117,7 +149,9 @@ function SidebarLink({ to, label, icon, badge, onClick }) {
 // lets the mobile hamburger drawer jump directly to a settings tab.
 function SidebarExpandableLink({ to, label, icon, children, onClick }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
   const onParentPage = location.pathname === to;
   const [open, setOpen] = useState(onParentPage);
 
@@ -126,6 +160,17 @@ function SidebarExpandableLink({ to, label, icon, children, onClick }) {
   }, [onParentPage]);
 
   const activeTab = onParentPage ? searchParams.get('tab') || 'general' : null;
+
+  async function handleChildClick(e, childTo) {
+    if (!hasUnsavedChanges) {
+      onClick?.();
+      return;
+    }
+    e.preventDefault();
+    if (!(await guardLeave(hasUnsavedChanges, setHasUnsavedChanges))) return;
+    onClick?.();
+    navigate(childTo);
+  }
 
   return (
     <div>
@@ -146,7 +191,7 @@ function SidebarExpandableLink({ to, label, icon, children, onClick }) {
             <Link
               key={child.key}
               to={`${to}?tab=${child.key}`}
-              onClick={onClick}
+              onClick={(e) => handleChildClick(e, `${to}?tab=${child.key}`)}
               className={`block px-3 py-2 rounded-md text-sm truncate transition-colors ${
                 activeTab === child.key ? 'bg-white/20 font-medium' : 'text-white/80 hover:bg-white/10'
               }`}
@@ -165,6 +210,15 @@ export default function AdminSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isDesktop = useIsDesktop();
+  const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
+  const { setupStatus } = useSetupStatus();
+  // Until initial store setup is 100% complete, restrict the nav to just
+  // Documentation/Settings/Logout so a fresh install can't wander into pages
+  // that assume it's already configured. Treat "still loading" as incomplete
+  // too, so the full nav never flashes in before yanking back out. SuperAdmin
+  // is treated as the developer role and is exempt from this onboarding gate.
+  const setupIncomplete = !setupStatus || setupStatus.percent !== 100;
+  const gatingActive = setupIncomplete && user?.role === 'Admin';
   const navScrollRef = useRef(null);
   const settingsAnchorRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -200,16 +254,28 @@ export default function AdminSidebar() {
     return () => clearTimeout(t);
   }, [menuOpen, onSettingsPage]);
 
-  function handleLogout() {
+  async function handleLogout() {
+    if (!(await guardLeave(hasUnsavedChanges, setHasUnsavedChanges))) return;
     logout();
     setMenuOpen(false);
     window.location.href = '/';
   }
 
-  const sections = buildSections({ pendingCount, lowStockCount, pendingUsersCount, canManageUsers });
+  async function handleBackToHome(onLinkClick) {
+    if (!(await guardLeave(hasUnsavedChanges, setHasUnsavedChanges))) return;
+    onLinkClick?.();
+    navigate('/');
+  }
+
+  const sections = gatingActive
+    ? []
+    : buildSections({ pendingCount, lowStockCount, pendingUsersCount, canManageUsers });
 
   const brand = (
-    <Link to="/admin/dashboard" className="font-extrabold text-lg flex items-center gap-2">
+    <Link
+      to={gatingActive ? '/admin/settings?tab=general' : '/admin/dashboard'}
+      className="font-extrabold text-lg flex items-center gap-2"
+    >
       <FontAwesomeIcon icon={faToolbox} />
       Admin Panel
     </Link>
@@ -242,22 +308,24 @@ export default function AdminSidebar() {
 
   function footerActions(onLinkClick) {
     return (
-      <div className="px-3 py-4 space-y-1 border-t border-white/10 shrink-0">
+      <div
+        className={`px-3 py-4 space-y-1 shrink-0 ${gatingActive ? 'border-b border-white/10' : 'border-t border-white/10'}`}
+      >
+        <SidebarLink to="/admin/documentation" label="Documentation" icon={faBook} onClick={onLinkClick} />
         {canManageUsers && (
           <div ref={settingsAnchorRef}>
             <SidebarExpandableLink {...SETTINGS_ITEM} onClick={onLinkClick} />
           </div>
         )}
-        <button
-          onClick={() => {
-            onLinkClick?.();
-            navigate('/');
-          }}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-white/10"
-        >
-          <FontAwesomeIcon icon={faHouse} className="w-4" />
-          Back to Home
-        </button>
+        {!gatingActive && (
+          <button
+            onClick={() => handleBackToHome(onLinkClick)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-white/10"
+          >
+            <FontAwesomeIcon icon={faHouse} className="w-4" />
+            Back to Home
+          </button>
+        )}
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium bg-wa-green hover:bg-wa-green-dark"
@@ -269,14 +337,31 @@ export default function AdminSidebar() {
     );
   }
 
+  // While gated (first-time setup, Admin role only), Documentation/Settings/Logout
+  // move to the top of the sidebar instead of the bottom - there's nothing else
+  // above them to push them down to, and it reads better as "start here."
+  // Once setup is 100% (or for SuperAdmin, always), they sit at the bottom as usual.
+  function navAndFooter(onLinkClick) {
+    return gatingActive ? (
+      <>
+        {footerActions(onLinkClick)}
+        <div className="flex-1">{navContent(onLinkClick)}</div>
+      </>
+    ) : (
+      <>
+        <div className="flex-1">{navContent(onLinkClick)}</div>
+        {footerActions(onLinkClick)}
+      </>
+    );
+  }
+
   if (isDesktop) {
     return (
       <aside className="flex flex-col w-64 shrink-0 h-screen sticky top-0 bg-wa-teal dark:bg-black text-white dark:border-r dark:border-wa-green/30">
         <div className="px-4 py-5 border-b border-white/10 shrink-0">{brand}</div>
         <div className="relative flex-1 min-h-0">
           <div ref={navScrollRef} className="scrollbar-none h-full overflow-y-auto flex flex-col">
-            <div className="flex-1">{navContent()}</div>
-            {footerActions()}
+            {navAndFooter()}
           </div>
           <CustomScrollbar containerRef={navScrollRef} thumbClassName="bg-white/25 hover:bg-white/40" />
         </div>
@@ -334,8 +419,7 @@ export default function AdminSidebar() {
               <p className="px-4 pt-3 pb-1 text-xs opacity-70 shrink-0">{user?.name} · {user?.role}</p>
               <div className="relative flex-1 min-h-0">
                 <div ref={navScrollRef} className="scrollbar-none h-full overflow-y-auto flex flex-col">
-                  <div className="flex-1">{navContent(() => setMenuOpen(false))}</div>
-                  {footerActions(() => setMenuOpen(false))}
+                  {navAndFooter(() => setMenuOpen(false))}
                 </div>
                 <CustomScrollbar containerRef={navScrollRef} thumbClassName="bg-white/25 hover:bg-white/40" />
               </div>

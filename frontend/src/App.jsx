@@ -60,6 +60,7 @@ import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminCustomerDetail from './pages/admin/AdminCustomerDetail';
 import AdminCustomerEdit from './pages/admin/AdminCustomerEdit';
 import AdminSettings from './pages/admin/AdminSettings';
+import AdminDocumentation from './pages/admin/AdminDocumentation';
 import PageNotFound from './pages/PageNotFound';
 
 // Every real route this app serves. Used only to tell "a valid page loaded
@@ -72,7 +73,7 @@ const KNOWN_PATHS = [
   '/terms', '/return-policy', '/privacy-policy',
   '/admin', '/admin/dashboard', '/admin/products', '/admin/categories', '/admin/subcategories', '/admin/orders',
   '/admin/low-stock', '/admin/blogs', '/admin/offers', '/admin/banners', '/admin/users', '/admin/customers',
-  '/admin/settings',
+  '/admin/settings', '/admin/documentation',
 ];
 
 const AUTH_PATHS = ['/login', '/register', '/apply-seller', '/seller-login', '/forgot-password'];
@@ -195,6 +196,7 @@ function App() {
                 <Route path="customers/:id" element={<AdminCustomerDetail />} />
                 <Route path="customers/:id/edit" element={<AdminCustomerEdit />} />
                 <Route path="settings" element={<AdminSettings />} />
+                <Route path="documentation" element={<AdminDocumentation />} />
               </Route>
               <Route path="/wholesale-view/:token" element={<WholesaleView />} />
               <Route path="*" element={<PageNotFound />} />

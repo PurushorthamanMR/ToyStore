@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { isValidEmail } = require('../utils/validators');
+const { sendSellerApprovedEmail } = require('../services/emailService');
 
 const ASSIGNABLE_ROLES = ['Seller', 'Admin'];
 
@@ -109,7 +110,11 @@ async function updateUser(req, res) {
 async function approveUser(req, res) {
   try {
     const { id } = req.params;
+    const [[user]] = await pool.query('SELECT name, email, shop_name FROM users WHERE id = ?', [id]);
     await pool.query(`UPDATE users SET status = 'approved', is_active = 1 WHERE id = ?`, [id]);
+    if (user?.email) {
+      await sendSellerApprovedEmail(user.email, user.name, user.shop_name);
+    }
     res.json({ message: 'User approved' });
   } catch (err) {
     console.error(err);

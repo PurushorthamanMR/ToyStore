@@ -1,71 +1,143 @@
-const nodemailer = require('nodemailer');
+const emailjs = require('@emailjs/nodejs');
 const pool = require('../config/db');
 
-const PURPOSE_SUBJECTS = {
+// Free EmailJS plans only allow 2 templates, so every email purpose funnels into one of two:
+// emailjs_template_otp (verification/reset codes) or emailjs_template_notify (everything else).
+// The notify template's Subject and body are fully dynamic (EmailJS Subject field set to
+// {{subject}}, body set to {{message}}), so its wording is composed here per event.
+const OTP_SUBJECTS = {
   register_customer: 'Verify your email to finish signing up',
   register_seller: 'Verify your email to finish your seller application',
   forgot_password: 'Your password reset code',
   change_email: 'Verify your new email address',
 };
 
-async function getSmtpConfig() {
+const OTP_INTROS = {
+  register_customer: 'Use the code below to verify your email and complete your registration.',
+  register_seller: 'Use the code below to verify your email and complete your seller application.',
+  forgot_password: 'Use the code below to reset your password.',
+  change_email: 'Use the code below to verify your new email address.',
+};
+
+async function getConfig() {
   const [[row]] = await pool.query(
-    'SELECT smtp_host, smtp_port, smtp_user, smtp_pass, email_from FROM settings WHERE id = 1'
+    `SELECT store_name, store_logo, theme_color_light, emailjs_service_id, emailjs_public_key,
+            emailjs_private_key, emailjs_reply_to, emailjs_template_otp, emailjs_template_notify
+     FROM settings WHERE id = 1`
   );
   return row;
 }
 
-async function sendOtpEmail(to, code, purpose) {
-  const subject = PURPOSE_SUBJECTS[purpose] || 'Your verification code';
-  const config = await getSmtpConfig();
+/** store_logo is saved as a relative path (e.g. "/uploads/x.png") - emails need a full URL. */
+function resolveLogoUrl(storeLogo) {
+  if (!storeLogo) return '';
+  if (/^https?:\/\//i.test(storeLogo)) return storeLogo;
+  const base = (process.env.PUBLIC_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  return `${base}${storeLogo.startsWith('/') ? '' : '/'}${storeLogo}`;
+}
 
-  if (!config?.smtp_host) {
-    // No SMTP configured in Admin Settings yet - print the code instead of sending.
+async function send(templateId, config, params) {
+  await emailjs.send(
+    config.emailjs_service_id,
+    templateId,
+    {
+      reply_to: config.emailjs_reply_to || '',
+      store_name: config.store_name || '',
+      store_logo: resolveLogoUrl(config.store_logo),
+      theme_color: config.theme_color_light || '#1DA851',
+      year: new Date().getFullYear(),
+      ...params,
+    },
+    { publicKey: config.emailjs_public_key, privateKey: config.emailjs_private_key || undefined }
+  );
+}
+
+/** Used for signup/change-email verification codes and password-reset codes - on the critical path, so failures throw. */
+async function sendOtpEmail(to, code, purpose, name) {
+  const config = await getConfig();
+
+  if (!config?.emailjs_service_id || !config?.emailjs_template_otp) {
+    // EmailJS not configured in Admin Settings yet - print the code instead of sending.
     console.log(`[otp] code for ${to} (${purpose}): ${code}`);
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: String(config.smtp_host || '').trim(),
-    port: Number(config.smtp_port) || 587,
-    secure: Number(config.smtp_port) === 465,
-    requireTLS: Number(config.smtp_port) !== 465,
-    auth: {
-      user: String(config.smtp_user || '').trim(),
-      pass: String(config.smtp_pass || '').trim(),
-    },
-  });
-
   try {
-    await transporter.sendMail({
-      from: String(config.email_from || config.smtp_user || '').trim(),
-      to,
-      subject,
-      text: `Your verification code is ${code}. It expires in 10 minutes.`,
-      html: `<p>Your verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>It expires in 10 minutes.</p>`,
+    await send(config.emailjs_template_otp, config, {
+      to_email: to,
+      to_name: name || to,
+      code,
+      expires_minutes: 10,
+      subject: OTP_SUBJECTS[purpose] || 'Your verification code',
+      intro: OTP_INTROS[purpose] || 'Use the code below to continue.',
     });
   } catch (err) {
-    console.error('[smtp] send failed:', err.message);
-    console.error('[smtp] using user:', String(config.smtp_user || '').trim(), 'host:', config.smtp_host, 'port:', config.smtp_port);
-    const msg = err.message || '';
-    const response = err.response || '';
-    const combined = `${msg} ${response}`;
-    let friendly;
-    if (/525|unauthorized ip/i.test(combined)) {
-      friendly =
-        'Brevo blocked this computer\'s IP. In Brevo go to Settings → SMTP & API → Authorized IPs, and either add your current public IP or turn off IP restriction for SMTP keys. Then try again.';
-    } else if (/auth|535|credentials|invalid login/i.test(combined)) {
-      const user = String(config.smtp_user || '').trim();
-      friendly = !/@smtp-brevo\.com$/i.test(user)
-        ? `Email login failed. Your SMTP Username is currently "${user}". For Brevo it must look like xxx@smtp-brevo.com (from Brevo → Settings → SMTP & API → Login). Password must be an SMTP key.`
-        : 'Email login failed. Username looks correct — regenerate a new SMTP key in Brevo and paste it into SMTP Password (no spaces).';
-    } else {
-      friendly = `Failed to send email: ${msg}`;
-    }
-    const error = new Error(friendly);
+    const detail = err?.text || err?.message || String(err);
+    console.error('[emailjs] OTP send failed:', detail);
+    const error = new Error(`Failed to send email: ${detail}`);
     error.status = 502;
     throw error;
   }
 }
 
-module.exports = { sendOtpEmail };
+/** Notification emails below are not on any critical path - log and swallow failures instead of throwing. */
+async function sendNotification(subject, message, to, name, label) {
+  const config = await getConfig();
+  if (!config?.emailjs_service_id || !config?.emailjs_template_notify) {
+    console.log(`[email] notify template not configured, skipping ${label} send to ${to}`);
+    return;
+  }
+  try {
+    await send(config.emailjs_template_notify, config, { to_email: to, to_name: name || to, subject, message });
+  } catch (err) {
+    console.error(`[emailjs] ${label} send failed:`, err?.text || err?.message || err);
+  }
+}
+
+async function sendWelcomeEmail(to, name) {
+  await sendNotification(
+    'Welcome!',
+    'Welcome! Your account has been created successfully. You can now log in and start shopping.',
+    to,
+    name,
+    'welcome'
+  );
+}
+
+async function sendSellerAppliedEmail(to, name, shopName) {
+  await sendNotification(
+    'We received your seller application',
+    `Thank you for applying to sell with us as "${shopName || ''}". Your application is under review. We'll email you once it's approved.`,
+    to,
+    name,
+    'seller-applied'
+  );
+}
+
+async function sendSellerApprovedEmail(to, name, shopName) {
+  await sendNotification(
+    'Your seller account has been approved!',
+    `Great news! Your seller account "${shopName || ''}" has been approved. You can now log in and start listing products.`,
+    to,
+    name,
+    'seller-approved'
+  );
+}
+
+async function sendSetupCompleteEmail(to) {
+  await sendNotification(
+    'Your store setup is complete!',
+    'All required settings are configured — General, Contact, Appearance, Legal Pages, Email, and Google Drive are ready to go.',
+    to,
+    null,
+    'setup-complete'
+  );
+}
+
+module.exports = {
+  sendOtpEmail,
+  sendWelcomeEmail,
+  sendSellerAppliedEmail,
+  sendSellerApprovedEmail,
+  sendSetupCompleteEmail,
+};
