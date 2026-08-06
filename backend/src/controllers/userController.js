@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { isValidEmail } = require('../utils/validators');
 const { sendSellerApprovedEmail, sendSellerRejectedEmail } = require('../services/emailService');
+const { ANONYMOUS_SELLER_MARKER } = require('../utils/anonymousSeller');
 
 const ASSIGNABLE_ROLES = ['Seller', 'Admin'];
 
@@ -52,9 +53,9 @@ async function listUsers(req, res) {
     const [rows] = await pool.query(
       `SELECT u.id, u.name, u.email, u.phone, u.shop_name, u.city, r.name AS role, u.status, u.is_active, u.created_at
        FROM users u JOIN user_roles r ON r.id = u.role_id
-       WHERE u.status = ? AND r.name IN ('Admin', 'Seller')
+       WHERE u.status = ? AND r.name IN ('Admin', 'Seller') AND u.email != ?
        ORDER BY u.created_at DESC`,
-      [filterStatus]
+      [filterStatus, ANONYMOUS_SELLER_MARKER]
     );
     res.json(rows);
   } catch (err) {

@@ -12,9 +12,11 @@ import {
   faLink,
   faEnvelope,
   faBook,
+  faDatabase,
 } from '@fortawesome/free-solid-svg-icons';
 import { faGoogleDrive } from '@fortawesome/free-brands-svg-icons';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useSetupStatus } from '../../context/SetupStatusContext';
 import { useUnsavedChanges } from '../../context/UnsavedChangesContext';
@@ -35,7 +37,33 @@ export const SETTINGS_SECTIONS = [
   { key: 'email', label: 'Email (EmailJS)', icon: faEnvelope },
   { key: 'wholesale', label: 'Wholesale Link', icon: faLink },
 ];
-const SECTIONS = SETTINGS_SECTIONS;
+
+// Database Export is SuperAdmin-only, so it's appended conditionally rather
+// than living in the static list - both this page and AdminSidebar's Settings
+// sub-nav call this so they never fall out of sync with each other.
+export function getSettingsSections(isSuperAdmin) {
+  return isSuperAdmin
+    ? [...SETTINGS_SECTIONS, { key: 'export', label: 'Database Export', icon: faDatabase }]
+    : SETTINGS_SECTIONS;
+}
+
+// Axios responses come back as a blob with the response headers still
+// attached - reads the real filename mysqldump/exportController set instead
+// of hardcoding one, then triggers the browser's normal save-file flow.
+function downloadBlob(response, fallbackName) {
+  const disposition = response.headers?.['content-disposition'] || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : fallbackName;
+
+  const url = window.URL.createObjectURL(response.data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 function ConfigGuideLink({ section }) {
   return (
@@ -133,12 +161,16 @@ function FloatingSaveCancel({ saving, disabled, onCancel, formId }) {
 }
 
 export default function AdminSettings() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'SuperAdmin';
+  const sections = getSettingsSections(isSuperAdmin);
   const { settings, refreshSettings } = useSettings();
   const { refreshSetupStatus } = useSetupStatus();
   const { setHasUnsavedChanges } = useUnsavedChanges();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedSection = searchParams.get('tab');
-  const activeSection = SECTIONS.some((s) => s.key === requestedSection) ? requestedSection : 'general';
+  const activeSection = sections.some((s) => s.key === requestedSection) ? requestedSection : 'general';
+  const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -426,6 +458,30 @@ export default function AdminSettings() {
       errorAlert('Failed', 'Could not regenerate the wholesale link.');
     } finally {
       setRegenerating(false);
+    }
+  }
+
+  async function handleExport() {
+    const confirmed = await confirmAction({
+      title: 'Export the database?',
+      text: 'Downloads two .sql files: one with just the table structure, one with just the data.',
+      confirmText: 'Export',
+    });
+    if (!confirmed) return;
+
+    setExporting(true);
+    try {
+      const [structureRes, dataRes] = await Promise.all([
+        api.get('/settings/export/structure', { responseType: 'blob' }),
+        api.get('/settings/export/data', { responseType: 'blob' }),
+      ]);
+      downloadBlob(structureRes, 'structure.sql');
+      downloadBlob(dataRes, 'data.sql');
+      successAlert('Export ready', 'Both files have started downloading.');
+    } catch (err) {
+      errorAlert('Export failed', err.response?.data?.message || 'Failed to export the database.');
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -917,6 +973,22 @@ export default function AdminSettings() {
               >
                 <FontAwesomeIcon icon={faRotate} spin={regenerating} />
                 {regenerating ? 'Regenerating...' : 'Regenerate Link'}
+              </button>
+            </SectionCard>
+          )}
+
+          {activeSection === 'export' && isSuperAdmin && (
+            <SectionCard
+              title="Database Export"
+              description="Downloads two files: one with just the table structure (CREATE TABLE statements, no data) and one with just the data (INSERT statements, no schema) - the same split phpMyAdmin offers. Requires mysqldump to be installed on the backend server."
+            >
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting}
+                className="bg-wa-green hover:bg-wa-green-dark disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-md"
+              >
+                {exporting ? 'Exporting...' : 'Export'}
               </button>
             </SectionCard>
           )}

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { isValidEmail } = require('../utils/validators');
+const { ANONYMOUS_WHATSAPP_MARKER } = require('../utils/anonymousCustomer');
 
 async function checkCustomerField(req, res) {
   try {
@@ -46,8 +47,8 @@ async function listCustomers(req, res) {
     const isActive = active === '0' || active === 'false' ? 0 : 1;
     const [rows] = await pool.query(
       `SELECT id, name, email, whatsapp_number AS phone, is_active, created_at
-       FROM customers WHERE is_active = ? ORDER BY created_at DESC`,
-      [isActive]
+       FROM customers WHERE is_active = ? AND whatsapp_number != ? ORDER BY created_at DESC`,
+      [isActive, ANONYMOUS_WHATSAPP_MARKER]
     );
     res.json(rows);
   } catch (err) {

@@ -29,7 +29,7 @@ import { useSetupStatus } from '../../context/SetupStatusContext';
 import { confirmAction } from '../../lib/alert';
 import api from '../../api/client';
 import CustomScrollbar from '../../components/CustomScrollbar';
-import { SETTINGS_SECTIONS } from './AdminSettings';
+import { getSettingsSections } from './AdminSettings';
 import { DOCUMENTATION_TABS } from './AdminDocumentation';
 
 // Shared by every navigation trigger below (top-level links, Settings sub-tabs,
@@ -107,7 +107,6 @@ function buildSections({ pendingCount, lowStockCount, pendingUsersCount, canMana
   ];
 }
 
-const SETTINGS_ITEM = { to: '/admin/settings', label: 'Settings', icon: faGear, children: SETTINGS_SECTIONS };
 const DOCUMENTATION_ITEM = {
   to: '/admin/documentation',
   label: 'Documentation',
@@ -226,6 +225,12 @@ export default function AdminSidebar() {
   // is treated as the developer role and is exempt from this onboarding gate.
   const setupIncomplete = !setupStatus || setupStatus.percent !== 100;
   const gatingActive = setupIncomplete && user?.role === 'Admin';
+  const settingsItem = {
+    to: '/admin/settings',
+    label: 'Settings',
+    icon: faGear,
+    children: getSettingsSections(user?.role === 'SuperAdmin'),
+  };
   const navScrollRef = useRef(null);
   const settingsAnchorRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -333,7 +338,7 @@ export default function AdminSidebar() {
       >
         <div ref={settingsAnchorRef} className="space-y-1">
           <SidebarExpandableLink {...DOCUMENTATION_ITEM} onClick={onLinkClick} />
-          {canManageUsers && <SidebarExpandableLink {...SETTINGS_ITEM} onClick={onLinkClick} />}
+          {canManageUsers && <SidebarExpandableLink {...settingsItem} onClick={onLinkClick} />}
         </div>
         {!gatingActive && (
           <button
