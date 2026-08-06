@@ -389,7 +389,9 @@ function ConfigTab() {
         <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
           Stores every image uploaded in the app (products, categories, banners, blogs, store logo, profile
           pictures) instead of this server's local disk. Configure in <strong>Settings → Google Drive</strong>.
-          Uses a Service Account (not OAuth) since it needs to run unattended, with no re-login ever required.
+          Uses a Service Account (not OAuth) since it needs to run unattended. Google requires a{' '}
+          <strong>Shared Drive</strong> (Google Workspace) — a personal My Drive folder shared with the Service
+          Account will fail with a storage-quota error.
         </p>
 
         <SubHeading>1. Create a Google Cloud project</SubHeading>
@@ -409,18 +411,19 @@ function ConfigTab() {
           <Step n={3}>Copy the <Code>client_email</Code> value, and the full multi-line <Code>private_key</Code> value including the <Code>-----BEGIN PRIVATE KEY-----</Code>/<Code>-----END-----</Code> lines.</Step>
         </div>
 
-        <SubHeading>4. Create and share a Drive folder</SubHeading>
+        <SubHeading>4. Create a Shared Drive folder</SubHeading>
         <div className="space-y-3 pt-1">
-          <Step n={1}>Go to <Code>drive.google.com</Code> logged in with your own personal Google account (not the Service Account — it can't log into a website).</Step>
-          <Step n={2}><strong>+ New</strong> → <strong>New folder</strong> → name it (e.g. "Store Uploads") → <strong>Create</strong>.</Step>
-          <Step n={3}>
-            Right-click the folder → <strong>Share</strong> (or open it and use the Share button top-right) → paste
-            the Service Account's <Code>client_email</Code> → change its role from Viewer to <strong>Editor</strong>{' '}
-            → <strong>Send</strong>/<strong>Share</strong>.
+          <Step n={1}>
+            Go to <Code>drive.google.com</Code> with a <strong>Google Workspace</strong> account → left sidebar{' '}
+            <strong>Shared drives</strong> → <strong>+ New</strong> → create a Shared Drive (e.g. "Store Uploads").
           </Step>
-          <Step n={4}>
-            Open the folder and copy its ID from the address bar (the part after <Code>/folders/</Code> in{' '}
-            <Code>drive.google.com/drive/folders/&lt;ID&gt;</Code>).
+          <Step n={2}>
+            Open the Shared Drive → manage members → add the Service Account's <Code>client_email</Code> as{' '}
+            <strong>Content manager</strong> (or Manager).
+          </Step>
+          <Step n={3}>
+            Inside the Shared Drive, create a folder if you want one, open it, and copy its ID from the address bar
+            (the part after <Code>/folders/</Code> in <Code>drive.google.com/drive/folders/&lt;ID&gt;</Code>).
           </Step>
         </div>
 
@@ -433,7 +436,8 @@ function ConfigTab() {
         </div>
 
         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
-          Leave any of the 3 fields blank to keep saving uploads to this server's local disk instead.
+          Leave any of the 3 fields blank to keep saving uploads to this server's local disk instead. Personal
+          Gmail / My Drive folders cannot be used with a Service Account.
         </p>
       </Card>
     </div>

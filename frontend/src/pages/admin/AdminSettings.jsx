@@ -692,7 +692,7 @@ export default function AdminSettings() {
               <form id="drive-form" onSubmit={handleDriveSubmit}>
                 <SectionCard
                   title="Google Drive"
-                  description="Used to store every image uploaded in the app (products, categories, banners, blogs, store logo, profile pictures) instead of saving them on this server's disk. Create a free Google Cloud Service Account, share a Drive folder with it, and paste the 3 values below. Leave blank to keep saving uploads to this server's local disk instead."
+                  description="Used to store every image uploaded in the app (products, categories, banners, blogs, store logo, profile pictures) instead of saving them on this server's disk. Create a Google Cloud Service Account, put a folder in a Shared Drive (Google Workspace), add the Service Account as Content Manager, and paste the 3 values below. Personal My Drive folders will fail — leave blank to keep saving uploads to this server's local disk instead."
                   headerAction={!editing && <EditButton onClick={() => startEdit(driveForm)} />}
                 >
                   <div>
@@ -716,7 +716,7 @@ export default function AdminSettings() {
                     />
                   </div>
                   <div>
-                    <Label hint="(the Drive folder shared with the Service Account as Editor)">Folder ID</Label>
+                    <Label hint="(Shared Drive folder ID; Service Account must be Content Manager)">Folder ID</Label>
                     <input
                       disabled={!editing}
                       value={driveForm.drive_folder_id || ''}
